@@ -1,0 +1,74 @@
+{
+  "nav": {
+    "dashboard": "Bảng Điều Khiển",
+    "adminPanel": "Bảng Quản Trị",
+    "console": "Bảng Điều Khiển",
+    "logout": "Đăng Xuất"
+  },
+  "auth": {
+    "login": "Đăng Nhập",
+    "username": "Tên đăng nhập",
+    "password": "Mật khẩu",
+    "loginFailed": "Đăng nhập thất bại",
+    "username_placeholder": "admin"
+  },
+  "admin": {
+    "title": "Bảng Quản Trị",
+    "subtitle": "Quản lý người dùng và phân quyền",
+    "addUser": "Thêm Người Dùng",
+    "tableHeaders": {
+      "user": "Người Dùng",
+      "email": "Email",
+      "role": "Vai Trò",
+      "status": "Trạng Thái",
+      "created": "Ngày Tạo",
+      "actions": "Hành Động"
+    },
+    "roles": {
+      "super_admin": "Quản trị viên cấp cao",
+      "admin": "Quản trị viên",
+      "moderator": "Kiểm duyệt",
+      "viewer": "Người qua đường"
+    },
+    "actions": {
+      "edit": "Chỉnh Sửa",
+      "delete": "Xóa",
+      "confirm_delete": "Bạn có chắc muốn xóa user này?"
+    },
+    "stats": {
+      "totalUsers": "Tổng Người Dùng",
+      "activeUsers": "Người Dùng Hoạt Động"
+    }
+  },
+  "dashboard": {
+    "title": "Bảng Điều Khiển",
+    "botStatus": "Trạng Thái Bot",
+    "uptime": "Thời Gian Hoạt Động",
+    "totalMessages": "Tổng Tin Nhắn",
+    "todayMessages": "Tin Nhắn Hôm Nay",
+    "recentActivity": "Hoạt Động Gần Đây",
+    "commands": "Lệnh"
+  },
+  "console": {
+    "title": "Bảng Điều Khiển",
+    "logs": "Nhật Ký",
+    "console": "Bảng Điều Khiển",
+    "timestamp": "Thời Gian",
+    "level": "Mức Độ",
+    "message": "Thông Báo",
+    "command": "Lệnh",
+    "response": "Phản Hồi"
+  },
+  "common": {
+    "loading": "Đang tải...",
+    "error": "Lỗi",
+    "success": "Thành Công",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "edit": "Chỉnh Sửa",
+    "create": "Tạo",
+    "active": "Hoạt Động",
+    "inactive": "Không Hoạt Động"
+  }
+}
