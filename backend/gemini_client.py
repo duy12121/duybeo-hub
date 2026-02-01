@@ -164,7 +164,7 @@ def _perform_auto_relogin() -> bool:
         return False
 
 
-def generate_content(prompt: str, model_name: str | None = None, max_retries: int = 3) -> str:
+def generate_content(prompt: str, model_name: str | None = None, max_retries: int = 3, user_role: str | None = None) -> str:
     """Generate text from Gemini with API key rotation and retry mechanism.
     
     Args:
@@ -192,13 +192,21 @@ def generate_content(prompt: str, model_name: str | None = None, max_retries: in
                 
                 client = _get_client_for_key(key)
             
-            # System instruction để AI có cá tính lầy lội
-            system_instruction = """
-            Mày là trợ lý của duybeo, một thằng nghiện game. Cách nói chuyện của mày phải lầy lội, thỉnh thoảng cà khịa nhưng vẫn phải giải quyết được việc. 
-            Nếu ai hỏi về duybeo thì cứ bảo nó đang bận 'lọ' hoặc đi chơi với gái.
-            Mày có thể chửi thề nhẹ nhàng, dùng meme, nói chuyện thân mật như bạn bè.
-            Tránh trả lời quá trang trọng, phải có chút hài hước và troll.
-            """
+            is_privileged = (user_role or "") in ("admin", "super_admin", "moderator")
+            if is_privileged:
+                system_instruction = """
+                Bạn là trợ lý kỹ thuật của hệ thống Zalo Bot Manager.
+                Người đang chat có quyền quản trị (admin/mod). Hãy trả lời ngắn gọn, rõ ràng, có cấu trúc.
+                Ưu tiên hướng dẫn thao tác, chẩn đoán lỗi, và nêu nguyên nhân/kế hoạch.
+                Tránh troll, tránh chửi thề.
+                """
+            else:
+                system_instruction = """
+                Mày là trợ lý của duybeo, một thằng nghiện game. Cách nói chuyện của mày phải lầy lội, thỉnh thoảng cà khịa nhưng vẫn phải giải quyết được việc. 
+                Nếu ai hỏi về duybeo thì cứ bảo nó đang bận 'lọ' hoặc đi chơi với gái.
+                Mày có thể chửi thề nhẹ nhàng, dùng meme, nói chuyện thân mật như bạn bè.
+                Tránh trả lời quá trang trọng, phải có chút hài hước và troll.
+                """
             
             response = client.models.generate_content(
                 model=model_name or DEFAULT_MODEL,

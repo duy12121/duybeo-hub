@@ -1022,7 +1022,7 @@ async def ai_chat(
                 ai_rate_limits[username] = (now, user_limit[1] + 1)
         
         # Generate response
-        reply = generate_ai_content(request.message)
+        reply = generate_ai_content(request.message, user_role=current_user.role)
         return AIResponse(reply=reply)
         
     except HTTPException:

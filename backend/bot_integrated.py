@@ -1140,12 +1140,11 @@ class Bot(ZaloAPI):
             super().__init__(api_key, secret_key, imei, session_cookies)
         except Exception as e:
             # If cookie login fails, try with phone/password (api_key as phone, secret_key as password)
-            logger.warning(f"Cookie login failed: {e}. Attempting phone/password login...")
-            try:
-                super().__init__(api_key, secret_key, imei)
-            except Exception as login_error:
-                logger.error(f"Both login methods failed: {login_error}")
-                raise
+            logger.error(
+                f"Cookie login failed: {e}. Phone/password login is not supported by zlapi. "
+                "Please update ZALO_COOKIES with a valid session."
+            )
+            raise
         
         self.version = "v1.1"
         self.date_update = '08-08-24'
