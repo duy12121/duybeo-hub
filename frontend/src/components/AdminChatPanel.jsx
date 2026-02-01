@@ -15,7 +15,9 @@ const AdminChatPanel = memo(({ currentUser, isOpen, onClose }) => {
       loadChatSessions();
       
       // Setup WebSocket for real-time messages
-      const ws = new WebSocket(`${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/chat`);
+      const wsBase = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '') ||
+        `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+      const ws = new WebSocket(`${wsBase}/ws/chat`);
       
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);

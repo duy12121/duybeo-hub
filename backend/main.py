@@ -5,8 +5,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
+import logging
 import time
 import asyncio
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from bson import ObjectId
@@ -31,6 +33,8 @@ import asyncio
 import bot_runner 
 import re
 import time
+
+logger = logging.getLogger(__name__)
 
 try:
     from gemini_client import generate_content as generate_ai_content, get_api_key_status, reset_failed_keys
@@ -70,6 +74,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
 
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
+FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
+FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
+
 @app.get("/health")
 async def health_check_root():
     """Health check endpoint for deployment monitoring (root path)"""
@@ -90,9 +99,15 @@ async def health_check():
 
 # Serve static files (frontend) - with fallback
 try:
-    app.mount("/static", StaticFiles(directory="../frontend/dist"), name="static")
+    if not FRONTEND_INDEX_FILE.exists():
+        raise FileNotFoundError(f"Missing frontend build: {FRONTEND_INDEX_FILE}")
+
+    assets_dir = FRONTEND_DIST_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
     FRONTEND_AVAILABLE = True
-    print("✅ Frontend static files mounted")
+    print("✅ Frontend build detected and static assets mounted")
 except Exception as e:
     FRONTEND_AVAILABLE = False
     print(f"⚠️  Frontend static files not found: {e}")
@@ -102,7 +117,7 @@ async def read_index():
     """Serve the frontend index.html or fallback"""
     if FRONTEND_AVAILABLE:
         try:
-            return FileResponse("../frontend/dist/index.html")
+            return FileResponse(str(FRONTEND_INDEX_FILE))
         except Exception as e:
             print(f"⚠️  Frontend file not found: {e}")
     
@@ -110,41 +125,6 @@ async def read_index():
     return {
         "message": "Zalo Bot Manager API",
         "status": "running",
-        "endpoints": {
-            "health": "/health",
-            "api_docs": "/docs",
-            "api_health": "/api/health"
-        },
-        "note": "Frontend build files not found. Please build the frontend first."
-    }
-
-# Catch all other routes and serve the frontend (for SPA routing)
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    """Catch all routes for SPA routing"""
-    # API routes
-    if path.startswith("api/") or path == "health":
-        return HTTPException(status_code=404, detail="API endpoint not found")
-    
-    # Static files
-    if FRONTEND_AVAILABLE and path.startswith("static/"):
-        try:
-            return FileResponse(f"../frontend/dist/{path}")
-        except Exception:
-            pass
-    
-    # Frontend routes
-    if FRONTEND_AVAILABLE:
-        try:
-            return FileResponse("../frontend/dist/index.html")
-        except Exception as e:
-            print(f"⚠️  Frontend file not found: {e}")
-    
-    # Fallback for missing frontend
-    return {
-        "message": "Zalo Bot Manager API",
-        "status": "running", 
-        "requested_path": f"/{path}",
         "endpoints": {
             "health": "/health",
             "api_docs": "/docs",
@@ -1279,6 +1259,45 @@ async def auto_cleanup_chat_sessions():
         
         # Wait 5 minutes
         await asyncio.sleep(300)
+
+
+# Catch all other routes and serve the frontend (for SPA routing)
+@app.get("/{path:path}", include_in_schema=False)
+async def catch_all(path: str):
+    """Catch all routes for SPA routing"""
+    # API routes
+    if path.startswith("api/") or path == "health":
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+
+    # Static files (favicon, manifest, assets, etc.)
+    if FRONTEND_AVAILABLE:
+        try:
+            requested = (FRONTEND_DIST_DIR / path).resolve()
+            dist_root = FRONTEND_DIST_DIR.resolve()
+            if dist_root in requested.parents and requested.is_file():
+                return FileResponse(str(requested))
+        except Exception:
+            pass
+
+    # Frontend routes
+    if FRONTEND_AVAILABLE:
+        try:
+            return FileResponse(str(FRONTEND_INDEX_FILE))
+        except Exception as e:
+            print(f"⚠️  Frontend file not found: {e}")
+
+    # Fallback for missing frontend
+    return {
+        "message": "Zalo Bot Manager API",
+        "status": "running",
+        "requested_path": f"/{path}",
+        "endpoints": {
+            "health": "/health",
+            "api_docs": "/docs",
+            "api_health": "/api/health"
+        },
+        "note": "Frontend build files not found. Please build the frontend first."
+    }
 
 
 if __name__ == "__main__":

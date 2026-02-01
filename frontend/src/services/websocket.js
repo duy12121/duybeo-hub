@@ -14,7 +14,8 @@ class WebSocketService {
   }
 
   connect(userId) {
-    const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const WS_URL = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '') ||
+      `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
     
     try {
       this.ws = new WebSocket(`${WS_URL}/ws/${userId}`);
