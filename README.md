@@ -713,15 +713,3 @@ MIT License - Free to use for personal and commercial projects.
 Pull requests welcome! For major changes, please open an issue first.
 
 ---
-
-## 📞 Support
-
-- 📧 Email: namduyluong304@gmail.com
-- 💬 Discord: non
-- 📖 Docs: non
-
----
-
-**Made with ❤️ for Zalo Bot Management**
-
-⭐ Star repo nếu thấy hữu ích!
