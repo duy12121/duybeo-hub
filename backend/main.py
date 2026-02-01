@@ -63,6 +63,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
 
+@app.get("/health")
+async def health_check_root():
+    """Health check endpoint for deployment monitoring (root path)"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0"
+    }
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for deployment monitoring"""
