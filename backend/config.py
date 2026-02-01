@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 import secrets
 
@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     cors_origins: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,https://your-production-domain.com")
 
     bot_api_key: str = "default-bot-key"
-
-    zalo_api_key: str
-    zalo_secret_key: str
-    zalo_imei: str
-    zalo_cookies: str
-    auto_start_bot: str 
+    
+    zalo_api_key: str = ""
+    zalo_secret_key: str = ""
+    zalo_imei: str = ""
+    zalo_cookies: str = "{}"
+    auto_start_bot: bool = False
     
     model_config = {
         "env_file": os.path.join(os.path.dirname(__file__), ".env"),
