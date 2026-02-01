@@ -305,6 +305,7 @@ function UserModal({ user, onClose, onSuccess }) {
         // Update
         const updateData = { ...formData };
         if (!updateData.password) delete updateData.password;
+        if (!updateData.email) delete updateData.email;
         delete updateData.username; // Can't change username
         await usersAPI.update(user.id, updateData);
       } else {
@@ -352,14 +353,14 @@ function UserModal({ user, onClose, onSuccess }) {
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-dark-300 mb-2">
-              Email <span className="text-red-400">*</span>
+              Email {!user && <span className="text-red-400">*</span>}
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="input"
-              required
+              required={!user}
             />
           </div>
 

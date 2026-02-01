@@ -9,6 +9,7 @@ email-validator==2.3.0
 fastapi==0.128.0
 google-api-core==2.29.0
 google-auth==2.48.0
+google-genai
 google-generativeai==0.8.6
 grpcio==1.76.0
 h11==0.16.0

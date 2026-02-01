@@ -271,7 +271,7 @@ const Dashboard = memo(() => {
           )}
           
           {/* Bot Control - Only for users with CONTROL_BOT permission */}
-          {currentUser?.permissions?.includes('CONTROL_BOT') && (
+          {currentUser?.permissions?.includes('control_bot') && (
             <>
               <div className="flex items-center gap-2 px-4 py-2 bg-dark-800 rounded-lg border border-dark-700">
                 <div className={`w-2 h-2 rounded-full ${botStatus?.is_running ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
@@ -458,7 +458,7 @@ const Dashboard = memo(() => {
               </button>
               
               {/* Console tab only for Admin+ */}
-              {currentUser?.permissions?.includes('VIEW_LOGS') && (
+              {currentUser?.permissions?.includes('view_logs') && (
                 <button
                   onClick={() => setActiveLogTab('console')}
                   className={`px-3 py-1 rounded-lg text-sm transition-colors ${

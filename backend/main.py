@@ -961,6 +961,17 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         manager.disconnect(websocket, user_id)
 
 
+@app.websocket("/ws/chat")
+async def websocket_chat_endpoint(websocket: WebSocket):
+    user_id = f"chat_{int(time.time() * 1000)}"
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
+
+
 class AIRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
@@ -999,7 +1010,7 @@ async def ai_chat(
                 ai_rate_limits[username] = (now, user_limit[1] + 1)
         
         # Generate response
-        reply = generate_ai_content(request.message, request.thread_id)
+        reply = generate_ai_content(request.message)
         return AIResponse(reply=reply)
         
     except HTTPException:
