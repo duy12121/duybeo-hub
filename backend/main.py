@@ -36,6 +36,19 @@ import time
 
 logger = logging.getLogger(__name__)
 
+def _json_safe(value):
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
+
 try:
     from gemini_client import generate_content as generate_ai_content, get_api_key_status, reset_failed_keys
 except Exception:
@@ -1194,9 +1207,9 @@ async def get_admin_chat_sessions(
                 "fullName": session.get("fullName"),
                 "userRole": session["userRole"],
                 "targetType": session["targetType"],
-                "createdAt": session["createdAt"],
-                "lastActivity": session["lastActivity"],
-                "messages": session.get("messages", [])
+                "createdAt": _json_safe(session["createdAt"]),
+                "lastActivity": _json_safe(session["lastActivity"]),
+                "messages": _json_safe(session.get("messages", []))
             })
         
         return {"sessions": formatted_sessions}
@@ -1219,7 +1232,7 @@ async def get_session_messages(
             raise HTTPException(status_code=404, detail="Session not found")
         
         return {
-            "messages": session.get("messages", [])
+            "messages": _json_safe(session.get("messages", []))
         }
         
     except HTTPException:
