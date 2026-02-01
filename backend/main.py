@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 import time
@@ -39,17 +41,20 @@ except Exception:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_mongo()
+    print("🚀 Starting Zalo Bot Manager API...")
     
-    # Bot không được khởi động tự động, phải start từ web
-    # if settings.auto_start_bot.lower() == "true":
-    #     try:
-    #         print("🤖 Đang nạp cấu hình Bot từ settings...")
+    # Skip database initialization for now
+    print("⚠️  Database initialization skipped - Configure MONGO_URI to enable")
+    
+    # Start auto cleanup task (will fail gracefully without DB)
+    cleanup_task = None
     try:
         cleanup_task = asyncio.create_task(auto_cleanup_chat_sessions())
+        print("✅ Auto cleanup task started")
     except Exception as e:
         print(f"⚠️  Cleanup task failed: {e}")
-        cleanup_task = None
+    
+    print("✅ Application startup complete")
     
     yield
     
@@ -60,6 +65,8 @@ async def lifespan(app: FastAPI):
             await cleanup_task
         except asyncio.CancelledError:
             pass
+    
+    print("🛑 Application shutdown complete")
 
 app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
 
@@ -79,6 +86,71 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "1.0.0"
+    }
+
+# Serve static files (frontend) - with fallback
+try:
+    app.mount("/static", StaticFiles(directory="../frontend/dist"), name="static")
+    FRONTEND_AVAILABLE = True
+    print("✅ Frontend static files mounted")
+except Exception as e:
+    FRONTEND_AVAILABLE = False
+    print(f"⚠️  Frontend static files not found: {e}")
+
+@app.get("/")
+async def read_index():
+    """Serve the frontend index.html or fallback"""
+    if FRONTEND_AVAILABLE:
+        try:
+            return FileResponse("../frontend/dist/index.html")
+        except Exception as e:
+            print(f"⚠️  Frontend file not found: {e}")
+    
+    # Fallback response
+    return {
+        "message": "Zalo Bot Manager API",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "api_docs": "/docs",
+            "api_health": "/api/health"
+        },
+        "note": "Frontend build files not found. Please build the frontend first."
+    }
+
+# Catch all other routes and serve the frontend (for SPA routing)
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    """Catch all routes for SPA routing"""
+    # API routes
+    if path.startswith("api/") or path == "health":
+        return HTTPException(status_code=404, detail="API endpoint not found")
+    
+    # Static files
+    if FRONTEND_AVAILABLE and path.startswith("static/"):
+        try:
+            return FileResponse(f"../frontend/dist/{path}")
+        except Exception:
+            pass
+    
+    # Frontend routes
+    if FRONTEND_AVAILABLE:
+        try:
+            return FileResponse("../frontend/dist/index.html")
+        except Exception as e:
+            print(f"⚠️  Frontend file not found: {e}")
+    
+    # Fallback for missing frontend
+    return {
+        "message": "Zalo Bot Manager API",
+        "status": "running", 
+        "requested_path": f"/{path}",
+        "endpoints": {
+            "health": "/health",
+            "api_docs": "/docs",
+            "api_health": "/api/health"
+        },
+        "note": "Frontend build files not found. Please build the frontend first."
     }
 
 app.add_middleware(
@@ -1218,12 +1290,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     host = "0.0.0.0"  # Required for Render
     
-    # Suppress uvicorn/Starlette INFO logs to reduce spam
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("starlette").setLevel(logging.WARNING)
+    # Suppress all logs for faster startup
+    logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
+    logging.getLogger("uvicorn").setLevel(logging.ERROR)
+    logging.getLogger("starlette").setLevel(logging.ERROR)
+    logging.getLogger("fastapi").setLevel(logging.ERROR)
     
-    # Disable access logs and reduce connection close spam
+    # Fast startup config
     print(f"🚀 Starting server on {host}:{port}")
     
     uvicorn.run(
@@ -1232,5 +1305,9 @@ if __name__ == "__main__":
         port=port,
         reload=False,
         access_log=False,
-        log_level="warning"
+        log_level="error",
+        workers=1,  # Single worker for memory efficiency
+        limit_concurrency=50,  # Limit concurrent connections
+        timeout_keep_alive=30,  # Faster timeout
+        timeout_graceful_shutdown=10,  # Faster shutdown
     )
