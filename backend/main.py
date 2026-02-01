@@ -479,7 +479,7 @@ async def update_user(
     return User(
         id=str(updated_user["_id"]),
         username=updated_user["username"],
-        email=updated_user["email"],
+        email=updated_user.get("email"),
         full_name=updated_user.get("full_name"),
         role=updated_user["role"],
         is_active=updated_user["is_active"],
@@ -580,6 +580,18 @@ async def start_bot(
                 return {"message": "Bot is already running", "status": bot_state}
         
         try:
+            if not settings.zalo_api_key or not settings.zalo_secret_key or not settings.zalo_imei:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Missing Zalo credentials. Please set ZALO_API_KEY, ZALO_SECRET_KEY, ZALO_IMEI."
+                )
+
+            if not settings.zalo_cookies or settings.zalo_cookies.strip() in ("{}", "", "null", "None"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Missing ZALO_COOKIES. Cookie login is required; phone/password login is not supported by zlapi."
+                )
+
             cookies = json.loads(settings.zalo_cookies)
             bot_runner.initialize_bot(
                 settings.zalo_api_key, 

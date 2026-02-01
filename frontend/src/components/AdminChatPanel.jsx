@@ -37,7 +37,11 @@ const AdminChatPanel = memo(({ currentUser, isOpen, onClose }) => {
       const response = await chatAPI.getAdminSessions({
         targetType: activeTab === 'admin' ? 'admin' : 'moderator'
       });
-      setChatSessions(response.data.sessions || []);
+      const sessions = (response.data.sessions || []).map((s) => ({
+        ...s,
+        id: s.sessionId,
+      }));
+      setChatSessions(sessions);
     } catch (error) {
       console.error('Failed to load chat sessions:', error);
     }

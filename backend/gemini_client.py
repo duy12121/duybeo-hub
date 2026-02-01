@@ -203,8 +203,14 @@ def generate_content(prompt: str, model_name: str | None = None, max_retries: in
             response = client.models.generate_content(
                 model=model_name or DEFAULT_MODEL,
                 contents=prompt,
-                config=genai.GenerateContentConfig(
-                    system_instruction=system_instruction
+                config=(
+                    genai.types.GenerateContentConfig(system_instruction=system_instruction)
+                    if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig")
+                    else (
+                        genai.GenerateContentConfig(system_instruction=system_instruction)
+                        if hasattr(genai, "GenerateContentConfig")
+                        else None
+                    )
                 )
             )
             
