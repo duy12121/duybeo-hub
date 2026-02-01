@@ -1,13 +1,16 @@
+import os
 import time
 import json
 import re
 import asyncio
 import unicodedata
-from threading import Thread
+from threading import Thread, Event
 from datetime import datetime
 from typing import Optional
 
 import requests
+
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 try:
     from urllib3.connection import HTTPConnection
@@ -38,10 +41,44 @@ try:
 except Exception as e:
     print(f"[WARNING] Could not patch urllib3: {e}")
 
+def report_command_to_backend(command_type, message, raw_content, user_info=None, thread_id=None, details=None):
+    """Report command/activity to backend for Dashboard with user interaction support. No-op on failure."""
+    try:
+        requests.post(
+            f"{BACKEND_URL}/api/command-logs",
+            json={
+                "command_type": command_type,
+                "message": message,
+                "raw_content": raw_content,
+                "user_info": user_info,
+                "thread_id": thread_id,
+                "details": details or {}
+            },
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+def report_activity_to_backend(messages_sent: int = 0, messages_received: int = 0, commands_used: int = 0):
+    """Report message/command activity to backend for Dashboard stats. No-op on failure."""
+    try:
+        requests.post(
+            f"{BACKEND_URL}/api/bot/activity",
+            json={
+                "messages_sent": messages_sent,
+                "messages_received": messages_received,
+                "commands_used": commands_used,
+            },
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+
 class BotLogger:
     """Logger that sends logs to web dashboard with nice formatting"""
-    def __init__(self, api_url: str = "http://localhost:8000"):
-        self.api_url = api_url
+    def __init__(self, api_url: str = None):
+        self.api_url = api_url or BACKEND_URL
         self.enabled = True
         self.colors = {
             "INFO": "\033[94m",      # Blue
@@ -64,10 +101,9 @@ class BotLogger:
         return f"{color}{level_badge}{reset} {timestamp} | {message}"
     
     def _send_log(self, level: str, message: str, details: dict = None):
-        """Send log to dashboard API"""
+        """Send log to dashboard API. Backend will only store/broadcast/print when logging is ON."""
         if not self.enabled:
             return
-            
         try:
             log_data = {
                 "level": level.upper(),
@@ -79,7 +115,7 @@ class BotLogger:
                 json=log_data,
                 timeout=3
             )
-        except Exception as e:
+        except Exception:
             pass  # Silently fail for API calls
     
     def info(self, message: str, details: dict = None):
@@ -218,12 +254,20 @@ class ZaloBotRunner:
     Zalo Bot Runner with Web Dashboard Integration
     """
     def __init__(self, api_key: str, secret_key: str, imei: str = None, session_cookies: dict = None):
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:238", "message": "ZaloBotRunner.__init__ called", "data": {"imei_provided": imei is not None, "session_cookies_provided": session_cookies is not None}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         self.api_key = api_key
         self.secret_key = secret_key
         self.imei = imei
         self.session_cookies = session_cookies
         self.bot = None
         self.running = False
+        self.bot_thread: Optional[Thread] = None
+        self.running_event = Event()
+        self.bot_thread: Optional[Thread] = None # New: to hold the bot listening thread
+        self.running_event = Event() # New: to signal the bot to stop
         
         logger.info("Initializing Zalo Bot Runner")
     
@@ -255,6 +299,8 @@ class ZaloBotRunner:
                             normalized_cookies[key] = value
 
                 from bot_integrated import Bot
+                print(f"[DEBUG] Bot class: {Bot}")
+                print(f"[DEBUG] Bot init: {Bot.__init__}")
                 self.bot = Bot(
                     self.api_key,
                     self.secret_key,
@@ -266,8 +312,13 @@ class ZaloBotRunner:
                 self.running = True
                 bot_name = getattr(self.bot, 'me_name', 'Unknown Bot')
                 logger.info(f"Bot started successfully: {bot_name}")
-
-                self.bot.listen(thread=True, reconnect=5)
+                # #region agent log
+                with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:289", "message": "Bot instance created and attempting to listen", "data": {"bot_name": bot_name}, "timestamp": int(time.time() * 1000)}) + "\n")
+                # #endregion
+                self.running_event.set() # Signal that the bot should be running
+                self.bot_thread = Thread(target=self.bot.listen, daemon=True)
+                self.bot_thread.start()
 
                 return
                 
@@ -310,22 +361,49 @@ class ZaloBotRunner:
         thread.start()
     
     def stop(self):
-        """Stop the bot"""
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:343", "message": "ZaloBotRunner.stop called", "data": {"self_running": self.running}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
+        if self.bot_thread and self.bot_thread.is_alive():
+            self.running_event.clear() # Signal the bot to stop
+            self.bot_thread.join(timeout=10) # Wait for the thread to finish
+            if self.bot_thread.is_alive():
+                logger.error("[ERROR] Bot thread did not terminate after 10 seconds.")
+                # You might want to add more robust termination logic here, e.g., killing the thread
+            else:
+                logger.info("Bot thread terminated.")
         self.running = False
         logger.info("Bot stopped")
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:361", "message": "ZaloBotRunner.stop completed", "data": {"self_running": self.running}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
 
 
 bot_runner = None 
 
 def initialize_bot(api_key, secret_key, imei=None, session_cookies=None):
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:368", "message": "initialize_bot function called", "data": {"api_key_provided": api_key is not None}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     """Initialize bot runner"""
     global bot_runner
     new_runner = ZaloBotRunner(api_key, secret_key, imei, session_cookies)
     bot_runner = new_runner
     print(f"[DEBUG] Đã gán bot_runner: {id(bot_runner)}")
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:377", "message": "bot_runner initialized", "data": {"bot_runner_id": id(bot_runner)}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     return bot_runner
 
 def start_bot_background():
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "bot_runner.py:346", "message": "start_bot_background called", "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     global bot_runner 
     
     retry = 0
@@ -343,6 +421,10 @@ def start_bot_background():
         t = Thread(target=bot_runner.start, daemon=True)
         t.start()
         print("🚀 Thread Bot đã phát lệnh khởi hành!")
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "bot_runner.py:363", "message": "Bot thread started", "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         return True
     except Exception as e:
         print(f"[ERROR] Không thể khởi động thread Bot: {e}")
@@ -350,25 +432,49 @@ def start_bot_background():
 
 
 def stop_bot():
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "bot_runner.py:370", "message": "stop_bot function called", "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     """Stop the bot"""
-    global bot_runner
+    global bot_runner 
     
     if bot_runner:
         bot_runner.stop()
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "bot_runner.py:379", "message": "bot_runner.stop called from stop_bot function", "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         return True
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "bot_runner.py:384", "message": "bot_runner is None in stop_bot function", "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     return False
 
 
 def get_bot_status():
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "D", "location": "bot_runner.py:425", "message": "get_bot_status function called", "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     """Get bot status"""
-    global bot_runner
+    global bot_runner 
     
     if bot_runner is None:
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "D", "location": "bot_runner.py:433", "message": "bot_runner is None in get_bot_status", "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         return {
             "running": False,
             "initialized": False
         }
     
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "D", "location": "bot_runner.py:443", "message": "bot_runner.running status", "data": {"running": bot_runner.running}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     return {
         "running": bot_runner.running,
         "initialized": True,

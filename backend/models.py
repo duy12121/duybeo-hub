@@ -134,6 +134,34 @@ class LogEntry(BaseModel):
     class Config:
         populate_by_name = True
 
+class CommandLog(BaseModel):
+    id: str = Field(alias="_id")
+    timestamp: datetime
+    command_type: str  # "user_command", "bot_response", "system_action"
+    message: str
+    raw_content: str  # Nội dung thô của lệnh/log
+    user_info: Optional[dict] = None  # Thông tin user nếu có
+    thread_id: Optional[str] = None  # ID cuộc trò chuyện
+    details: Optional[dict] = None
+    
+    class Config:
+        populate_by_name = True
+
+class UserProfile(BaseModel):
+    id: str
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: UserRole
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    total_commands: int = 0
+    total_messages: int = 0
+    
+    class Config:
+        populate_by_name = True
+
 class UserBreakdown(BaseModel):
     super_admin: int = 0
     admin: int = 0

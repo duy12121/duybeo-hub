@@ -1,6 +1,7 @@
 import time
 import json
 import re
+import os
 from threading import Thread
 from zlapi import *
 from zlapi.models import *
@@ -14,6 +15,25 @@ except ImportError:
         def warning(self, msg): print(f"[WARNING] {msg}")
         def error(self, msg): print(f"[ERROR] {msg}")
     logger = DummyLogger()
+
+try:
+    from gemini_client import generate_content as generate_ai_content
+except Exception:
+    generate_ai_content = None
+
+try:
+    from bot_runner import report_activity_to_backend
+except Exception:
+    def report_activity_to_backend(*_, **__): pass
+
+try:
+    from ai_handler import ai_handler
+except Exception:
+    # Fallback AI handler
+    class DummyAIHandler:
+        async def get_ai_response(self, message, thread_id=None, is_web=False):
+            return "Xin lỗi, AI không khả dụng ngay bây giờ."
+    ai_handler = DummyAIHandler()
 
 author  = (
     "👨‍💻 Tác giả: A Sìn\n"
@@ -779,6 +799,7 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
                 response = (
                     "🎉 Chào mừng đến với menu 🤖BOT! ⚙️\n"
                     "   ➜ !bot info: ♨️ Xem thông tin chi tiết về BOT\n"
+                    "   ➜ !bot genimi <câu hỏi>: 🤖 Hỏi Gemini AI (Google)\n"
                     "   ➜ !bot on/off: 🚀 Bật/ 🛑 Tắt BOT trong Group (OA)\n"
                     "   ➜ !bot admin add/remove/list: 👑 Thêm/xóa/xem danh sách Admin 🤖BOT\n"
                     "   ➜ !bot noiquy: 💢 Nội quy Group\n"
@@ -817,6 +838,27 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
                         "➜ ⏳ Thời gian chờ: 1 giây\n"
                         "➜ 🗃️ Tổng lệnh: 34 🍬 public 🤖 BOT(11), 🌀 Facebook(6), ⬇️ Downloader(1) , 💬 Chat AI(1), 🩴 Zép Lào(9), 🧙‍♂️ Bói bói Jocker(1), 📢 Tin tức(4), 🎮 Game(1),🔑 Key API ZL(1), 😤 Tính năng ẩn(...)"
                     )
+                elif action == 'genimi':
+                    # Lệnh: !bot genimi <câu hỏi> — hỏi Gemini AI
+                    if len(parts) < 2:
+                        response = "➜ 🤖 Cách dùng: !bot genimi <câu hỏi>\n➜ Ví dụ: !bot genimi Giải thích ngắn về AI"
+                    else:
+                        question = ' '.join(parts[1:])
+                        if not question.strip():
+                            response = "➜ 🤖 Vui lòng nhập câu hỏi sau lệnh: !bot genimi <câu hỏi>"
+                        else:
+                            try:
+                                # Use AI handler with timeout and fallback
+                                import asyncio
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                resp_text = loop.run_until_complete(
+                                    ai_handler.get_ai_response(question, thread_id, is_web=False)
+                                )
+                                loop.close()
+                                response = resp_text if resp_text else "➜ 🤖 AI không trả về nội dung."
+                            except Exception as e:
+                                response = f"➜ 🤖 Lỗi AI: {e}"
                 elif action == 'admin':
                     if len(parts) < 3:
                         response = "➜ Vui lòng nhập [list/add/remove] sau lệnh: !bot admin 🤧\n➜ Ví dụ: !bot admin list hoặc !bot admin add @Heoder hoặc !bot admin remove @Heoder ✅"
@@ -1059,15 +1101,27 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
                 else:
                     response = f"➜ Lệnh [!bot {action}] không được hỗ trợ 🤧"
             
+            # #region agent log
+            with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1090", "message": "handle_bot_command sending response", "data": {"command": command, "response_length": len(response) if response else 0}, "timestamp": int(time.time() * 1000)}) + "\n")
+            # #endregion
             if response:
                 bot.sendMessage(Message(text=f"{response}"), thread_id=thread_id, thread_type=thread_type)
-        
+                report_activity_to_backend(messages_sent=1, messages_received=0, commands_used=0)
         except Exception as e:
             import traceback
             error_msg = f"Error: {e}\n{traceback.format_exc()}"
             print(error_msg)
             bot.sendMessage(Message(text="➜ 🐞 Đã xảy ra lỗi gì đó 🤧"), thread_id=thread_id, thread_type=thread_type)
 
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1099", "message": "handle_bot_command thread started", "data": {"command": command}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1088", "message": "handle_bot_command thread started", "data": {"command": command}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     thread = Thread(target=send_bot_response)
     thread.start()
 
@@ -1078,6 +1132,10 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
 
 class Bot(ZaloAPI):
     def __init__(self, api_key, secret_key, imei=None, session_cookies=None):
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_integrated.py:1108", "message": "Bot.__init__ called", "data": {"imei_provided": imei is not None, "session_cookies_provided": session_cookies is not None}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         try:
             super().__init__(api_key, secret_key, imei, session_cookies)
         except Exception as e:
@@ -1099,6 +1157,14 @@ class Bot(ZaloAPI):
             
 
     def onMessage(self, mid, author_id, message, message_object, thread_id, thread_type):
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1152", "message": "onMessage received", "data": {"author_id": author_id, "thread_id": thread_id, "message_starts_with_bot": str(message).lower().startswith("!bot")}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1129", "message": "onMessage received", "data": {"author_id": author_id, "thread_id": thread_id, "message_starts_with_bot": str(message).lower().startswith("!bot")}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         allowed_thread_ids = get_allowed_thread_ids()
         if thread_id in allowed_thread_ids and thread_type == ThreadType.GROUP and not is_admin(author_id):
             handle_check_profanity(self, author_id, thread_id, message_object, thread_type, message)
@@ -1106,20 +1172,47 @@ class Bot(ZaloAPI):
         if not isinstance(message, str):
             return
 
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1137", "message": "onMessage processing message", "data": {"message_lower_startswith_bot": str(message).lower().startswith("!bot")}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
         message_lower = str(message).lower()
-        if message_lower.startswith("!bot"):
-            handle_bot_command(self, message_object, author_id, thread_id, thread_type, message)
-
-    def onMessage(self, mid, author_id, message, message_object, thread_id, thread_type):
-        allowed_thread_ids = get_allowed_thread_ids()
-        if thread_id in allowed_thread_ids and thread_type == ThreadType.GROUP and not is_admin(author_id):
-            handle_check_profanity(self, author_id, thread_id, message_object, thread_type, message)
-
-        
-        if not isinstance(message, str):
-            return
-
-        message_lower = str(message).lower()
-    
+        # #region agent log
+        with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "bot_integrated.py:1168", "message": "onMessage processing message", "data": {"message_lower_startswith_bot": message_lower.startswith("!bot")}, "timestamp": int(time.time() * 1000)}) + "\n")
+        # #endregion
+        # Report activity: 1 message received, and 1 command if !bot
+        report_activity_to_backend(
+            messages_sent=0,
+            messages_received=1,
+            commands_used=1 if message_lower.startswith("!bot") else 0,
+        )
+        # AI auto-reply: if enabled in settings, call Gemini in background
+        try:
+            settings = read_settings()
+            ai_global = settings.get("ai_enabled", False)
+            ai_threads = settings.get("ai_enabled_threads", [])
+            if (ai_global or thread_id in ai_threads):
+                def ai_reply():
+                    try:
+                        text = get_content_message(message_object)
+                        if not text:
+                            return
+                        # Use AI handler with timeout and fallback
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        resp = loop.run_until_complete(
+                            ai_handler.get_ai_response(text, thread_id, is_web=False)
+                        )
+                        loop.close()
+                        if resp:
+                            self.sendMessage(Message(text=resp), thread_id=thread_id, thread_type=thread_type)
+                            report_activity_to_backend(messages_sent=1, messages_received=0, commands_used=0)
+                    except Exception as e:
+                        logger.warning(f"AI reply failed: {e}")
+                Thread(target=ai_reply).start()
+        except Exception:
+            pass
         if message_lower.startswith("!bot"):
             handle_bot_command(self, message_object, author_id, thread_id, thread_type, message)

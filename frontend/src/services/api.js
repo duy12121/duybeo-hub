@@ -86,4 +86,20 @@ export const dashboardAPI = {
   getStats: () => api.get('/dashboard/stats'),
 };
 
+export const aiAPI = {
+  chat: (message, thread_id = undefined) => api.post('/ai/chat', { message, ...(thread_id ? { thread_id } : {}) }),
+};
+
+export const chatAPI = {
+  // User chat endpoints
+  createSession: (userData) => api.post('/chat/session', userData),
+  sendMessage: (data) => api.post('/chat/message', data),
+  cleanupSession: (sessionId) => api.delete(`/chat/session/${sessionId}`),
+  
+  // Admin chat endpoints
+  getAdminSessions: (params) => api.get('/chat/admin/sessions', { params }),
+  getSessionMessages: (sessionId) => api.get(`/chat/admin/sessions/${sessionId}/messages`),
+  sendAdminMessage: (data) => api.post('/chat/admin/message', data),
+};
+
 export default api;

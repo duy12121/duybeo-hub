@@ -31,8 +31,8 @@ def get_client() -> AsyncIOMotorClient:
         if getattr(settings, "mongodb_max_pool_size", None) is not None:
             client_kwargs["maxPoolSize"] = settings.mongodb_max_pool_size
 
-        db.client = AsyncIOMotorClient(settings.mongodb_url, **client_kwargs)
-        print(f"Connected to MongoDB at {settings.mongodb_url} (timeouts: {client_kwargs})")
+        db.client = AsyncIOMotorClient(settings.mongo_uri, **client_kwargs)
+        print(f"Connected to MongoDB at {settings.mongo_uri} (timeouts: {client_kwargs})")
     return db.client
 
 

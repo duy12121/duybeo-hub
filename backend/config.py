@@ -1,8 +1,10 @@
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 class Settings(BaseSettings):
-    mongodb_url: str = "mongodb://localhost:27017"
+    # MongoDB Configuration - Use MONGO_URI environment variable
+    mongo_uri: str = "mongodb://localhost:27017/zalo_bot_manager"  # Fallback for local development
     database_name: str = "zalo_bot_manager"
     # MongoDB client timeouts (milliseconds). Tune to make app fail-fast
     # when Atlas is under maintenance or network is slow.
@@ -11,11 +13,15 @@ class Settings(BaseSettings):
     mongodb_socket_timeout_ms: int = 20000
     mongodb_max_pool_size: int | None = None
 
-    secret_key: str
+    # Generate secure default secret key
+    import secrets
+    default_secret_key = secrets.token_urlsafe(32)
+    secret_key: str = os.getenv("SECRET_KEY", default_secret_key)
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
 
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    # Production CORS origins - will be overridden by environment variable
+    cors_origins: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,https://your-production-domain.com")
 
     bot_api_key: str = "default-bot-key"
 
@@ -26,7 +32,8 @@ class Settings(BaseSettings):
     auto_start_bot: str 
     
     class Config:
-        env_file = ".env"
+        env_file = os.path.join(os.path.dirname(__file__), ".env")
+        env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "allow"  
     

@@ -1,14 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Terminal, Shield, Bot, LogOut, Menu, X } from 'lucide-react';
+import { Home, Terminal, Shield, Bot, LogOut, Menu, X, User } from 'lucide-react';
 import { authAPI } from '../services/api';
 import websocket from '../services/websocket';
+import { AiChatPopup, AiChatFloatingButton } from './AiChatPopup';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationToast from './NotificationToast';
 
 export default function Layout() {
   const [user, setUser] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [userPanelOpen, setUserPanelOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const panelRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { notification, clearNotification } = useNotifications();
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setUserPanelOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     loadUser();
@@ -100,23 +115,40 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* User Profile */}
-        <div className="p-4 border-t border-dark-800">
+        {/* User Profile - clickable, shows user info panel */}
+        <div className="p-4 border-t border-dark-800 relative" ref={panelRef}>
           {sidebarOpen ? (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 px-3 py-2 bg-dark-800 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setUserPanelOpen(!userPanelOpen)}
+                className="w-full flex items-center gap-3 px-3 py-2 bg-dark-800 rounded-lg hover:bg-dark-700 transition-colors text-left"
+              >
                 <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
                   {user?.username?.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{user?.username}</p>
                   <p className="text-xs text-primary-400 truncate">
-                    Quyền hạn: {user?.role === 'super_admin' ? 'Quản trị viên cấp cao' : 
-                                user?.role === 'admin' ? 'Quản trị viên' : 
-                                user?.role === 'moderator' ? 'Kiểm duyệt viên' : 'Người qua đường'}
+                    Quyền: {user?.role === 'super_admin' ? 'Quản trị viên cấp cao' : 
+                              user?.role === 'admin' ? 'Quản trị viên' : 
+                              user?.role === 'moderator' ? 'Kiểm duyệt viên' : 'Người qua đường'}
                   </p>
                 </div>
-              </div>
+                <User className="w-4 h-4 text-dark-400 flex-shrink-0" />
+              </button>
+              {userPanelOpen && (
+                <div className="absolute bottom-full left-4 right-4 mb-2 p-4 bg-dark-800 border border-dark-600 rounded-lg shadow-xl z-50 space-y-3">
+                  <p className="text-xs font-semibold text-dark-400 uppercase">Thông tin tài khoản</p>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="text-dark-400">Tên tài khoản:</span> <span className="text-white">{user?.full_name || user?.username || '—'}</span></p>
+                    <p><span className="text-dark-400">Tên đăng nhập:</span> <span className="text-white">{user?.username || '—'}</span></p>
+                    <p><span className="text-dark-400">Email:</span> <span className="text-white">{user?.email || '—'}</span></p>
+                    <p><span className="text-dark-400">Thời gian tạo:</span> <span className="text-white">{user?.created_at ? new Date(user.created_at).toLocaleString('vi-VN') : '—'}</span></p>
+                    <p><span className="text-dark-400">Chức vụ:</span> <span className="text-primary-400">{user?.role === 'super_admin' ? 'Quản trị viên cấp cao' : user?.role === 'admin' ? 'Quản trị viên' : user?.role === 'moderator' ? 'Kiểm duyệt viên' : 'Người qua đường'}</span></p>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
@@ -126,13 +158,35 @@ export default function Layout() {
               </button>
             </div>
           ) : (
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center p-3 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-              title="Logout"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setUserPanelOpen(!userPanelOpen)}
+                className="w-full flex items-center justify-center p-3 text-primary-400 hover:bg-dark-800 rounded-lg transition-colors"
+                title="Thông tin tài khoản"
+              >
+                <User className="w-5 h-5" />
+              </button>
+              {userPanelOpen && (
+                <div className="absolute bottom-full left-2 right-2 mb-2 p-4 bg-dark-800 border border-dark-600 rounded-lg shadow-xl z-50 space-y-3 min-w-[220px]">
+                  <p className="text-xs font-semibold text-dark-400 uppercase">Thông tin tài khoản</p>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="text-dark-400">Tên:</span> <span className="text-white">{user?.full_name || user?.username || '—'}</span></p>
+                    <p><span className="text-dark-400">Đăng nhập:</span> <span className="text-white">{user?.username || '—'}</span></p>
+                    <p><span className="text-dark-400">Email:</span> <span className="text-white truncate block">{user?.email || '—'}</span></p>
+                    <p><span className="text-dark-400">Tạo lúc:</span> <span className="text-white text-xs">{user?.created_at ? new Date(user.created_at).toLocaleString('vi-VN') : '—'}</span></p>
+                    <p><span className="text-dark-400">Chức vụ:</span> <span className="text-primary-400">{user?.role === 'super_admin' ? 'Quản trị cấp cao' : user?.role === 'admin' ? 'Quản trị' : user?.role === 'moderator' ? 'Kiểm duyệt' : 'Người qua đường'}</span></p>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center p-3 mt-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </>
           )}
         </div>
 
@@ -151,6 +205,29 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Floating AI Chat - bottom right */}
+      {hasPermission('configure_bot') && (
+        <>
+          {!aiChatOpen && (
+            <AiChatFloatingButton
+              hasPermission={true}
+              onClick={() => setAiChatOpen(true)}
+            />
+          )}
+          <AiChatPopup
+            open={aiChatOpen}
+            onClose={() => setAiChatOpen(false)}
+            floating
+            compact
+          />
+        </>
+      )}
+      
+      <NotificationToast 
+        notification={notification} 
+        onClose={clearNotification} 
+      />
     </div>
   );
 }

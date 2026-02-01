@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { usersAPI, authAPI } from '../services/api';
-import { Users, Plus, Edit2, Trash2, Shield, X } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Shield, X, MessageCircle } from 'lucide-react';
+import { AiChatPopup } from '../components/AiChatPopup';
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -8,6 +9,7 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'ai'
 
   useEffect(() => {
     loadUsers();
@@ -84,12 +86,11 @@ export default function AdminPanel() {
           </div>
           <div>
             <h1 className="text-3xl font-display font-bold text-white">Bảng Quản Trị</h1>
-            <p className="text-dark-400 mt-1">Quản lý người dùng và phân quyền</p>
+            <p className="text-dark-400 mt-1">Quản lý người dùng và Chat AI</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Current User Permissions */}
           {currentUser && (
             <div className="card p-4 bg-dark-800/50 border border-dark-700/50">
               <p className="text-xs text-dark-400 mb-2 uppercase font-semibold">Quyền Hạn Hiện Tại</p>
@@ -112,14 +113,45 @@ export default function AdminPanel() {
             </div>
           )}
 
-          <button onClick={openCreateModal} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Thêm Người Dùng
-          </button>
+          {activeTab === 'users' && (
+            <button onClick={openCreateModal} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Thêm Người Dùng
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Users Table */}
+      {/* Tabs: Users | Ai */}
+      <div className="flex gap-2 border-b border-dark-700 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'users'
+              ? 'bg-primary-600 text-white'
+              : 'text-dark-400 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Users className="w-4 h-4 inline-block mr-2 align-middle" />
+          Người dùng
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('ai')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'ai'
+              ? 'bg-primary-600 text-white'
+              : 'text-dark-400 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <MessageCircle className="w-4 h-4 inline-block mr-2 align-middle" />
+          Ai
+        </button>
+      </div>
+
+      {/* Tab: Users */}
+      {activeTab === 'users' && (
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -227,6 +259,14 @@ export default function AdminPanel() {
           </table>
         </div>
       </div>
+      )}
+
+      {/* Tab: Ai - Chat inline */}
+      {activeTab === 'ai' && (
+        <div className="max-w-2xl">
+          <AiChatPopup open={true} onClose={() => {}} floating={false} compact={false} />
+        </div>
+      )}
 
       {/* User Modal */}
       {showModal && (

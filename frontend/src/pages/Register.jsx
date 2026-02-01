@@ -97,7 +97,7 @@ export default function Register() {
       if (detail === 'username_exists') {
         setError('Tên đăng nhập đã được sử dụng, vui lòng chọn tên khác');
       } else if (detail === 'email_exists') {
-        setError('Email đã được sử dụng, vui lòng chọn email khác');
+        setError('Gmail đã được sử dụng cho tài khoản khác');
       } else {
         setError(detail || 'Đăng ký thất bại');
       }

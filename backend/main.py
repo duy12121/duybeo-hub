@@ -2,17 +2,19 @@ from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconn
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime, timedelta, timezone
+import os
+import time
+import asyncio
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from bson import ObjectId
-import asyncio
 
 from config import settings
 from database import connect_to_mongo, close_mongo_connection, get_database
 from models import (
     User, UserCreate, UserUpdate, Token, BotStatus, BotCommand, 
     BotConfig, LogEntry, DashboardStats, Permission, UserRole, ROLE_PERMISSIONS,
-    UserBreakdown, ActivityPoint
+    UserBreakdown, ActivityPoint, CommandLog, UserProfile
 )
 from auth import (
     get_password_hash, authenticate_user, create_access_token,
@@ -26,6 +28,14 @@ import json
 import asyncio
 import bot_runner 
 import re
+import time
+
+try:
+    from gemini_client import generate_content as generate_ai_content, get_api_key_status, reset_failed_keys
+except Exception:
+    generate_ai_content = None
+    get_api_key_status = None
+    reset_failed_keys = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,25 +66,50 @@ async def lifespan(app: FastAPI):
     db = await get_database()
     admin_exists = await db.users.find_one({"role": UserRole.SUPER_ADMIN})
     if not admin_exists:
+        # Use environment variables for admin credentials with secure defaults
+        default_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+        default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")  # Change in production!
+        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@zalobot.local")
+        
         default_admin = {
             "_id": ObjectId(),
-            "username": "admin",
-            "email": "admin@zalobot.local",
+            "username": default_username,
+            "email": default_email,
             "full_name": "Super Admin",
-            "hashed_password": get_password_hash("admin123"),
+            "hashed_password": get_password_hash(default_password),
             "role": UserRole.SUPER_ADMIN,
             "is_active": True,
             "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc)
+            "updated_at": datetime.now(timezone.utc),
         }
         await db.users.insert_one(default_admin)
-        print("✅ Default super admin created: admin/admin123")
+        print(f"✅ Default super admin created: {default_username}/{default_password}")
+        print("⚠️  IMPORTANT: Change default admin credentials in production!")
     
-    yield 
+    # Start auto cleanup task
+    cleanup_task = asyncio.create_task(auto_cleanup_chat_sessions())
+    
+    yield
+    
+    # Cleanup task on shutdown
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass 
 
     await close_mongo_connection()
 
 app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for deployment monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0"
+    }
 
 app.add_middleware(
     CORSMiddleware,
@@ -132,7 +167,16 @@ class RegisterResponse(BaseModel):
 @app.post("/api/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate):
     """Register a new user account and return token for auto-login"""
-    db = await get_database()
+    print(f"[DEBUG] Register attempt: {user_data.username}")
+    try:
+        db = await get_database()
+        print(f"[DEBUG] Database connected successfully")
+    except Exception as e:
+        print(f"[ERROR] Database connection failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection failed"
+        )
     
     # Normalize and check if username already exists
     uname = user_data.username.strip().lower()
@@ -155,7 +199,9 @@ async def register(user_data: UserCreate):
             )
 
     # Create new user with 'viewer' role (lowest privilege)
-    now = datetime.now(timezone.utc)
+    from datetime import timedelta
+    gmt7 = timezone(timedelta(hours=7))
+    now = datetime.now(gmt7)
     user_dict = {
         "username": uname,
         "full_name": user_data.full_name or user_data.username,
@@ -168,8 +214,23 @@ async def register(user_data: UserCreate):
     if em:
         user_dict["email"] = em
     
-    result = await db.users.insert_one(user_dict)
-    user_dict["id"] = str(result.inserted_id)
+    try:
+        result = await db.users.insert_one(user_dict)
+        user_dict["id"] = str(result.inserted_id)
+        print(f"[SUCCESS] User saved successfully: {uname}")
+    except Exception as e:
+        print(f"[ERROR] Failed to save user to database: {e}")
+        print(f"[ERROR] User data: {user_dict}")
+        # Check if it's a duplicate key error
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username or email already exists"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save user. Please try again."
+        )
     
     # Get permissions for the user role
     permissions = ROLE_PERMISSIONS.get("viewer", [])
@@ -267,13 +328,40 @@ async def update_user(
 ):
     db = await get_database()
     
+    # Get current user data before update
+    current_user_data = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="User not found")
+    
     update_dict = {}
     if user_update.email:
         update_dict["email"] = user_update.email
     if user_update.full_name:
         update_dict["full_name"] = user_update.full_name
     if user_update.role:
-        update_dict["role"] = user_update.role
+        old_role = current_user_data.get("role")
+        new_role = user_update.role
+        update_dict["role"] = new_role
+        
+        # Send notification if role changed
+        if old_role and old_role != new_role:
+            role_names = {
+                "super_admin": "Super Admin",
+                "admin": "Admin", 
+                "moderator": "Moderator",
+                "viewer": "Viewer"
+            }
+            role_name = role_names.get(new_role, new_role)
+            await manager.broadcast_log("INFO", f"Bạn vừa được duybeo cấp {role_name}")
+            await manager.broadcast({
+                "type": "role_update",
+                "user_id": user_id,
+                "username": current_user_data.get("username", "Unknown"),
+                "old_role": old_role,
+                "new_role": new_role,
+                "role_name": role_name,
+                "message": f"Bạn vừa được duybeo cấp {role_name}"
+            })
     if user_update.password:
         update_dict["hashed_password"] = get_password_hash(user_update.password)
     if user_update.is_active is not None:
@@ -322,14 +410,10 @@ async def delete_user(
     return {"message": "User deleted successfully"}
 
 
-# Global settings
-logging_enabled = True  # Toggle to control log broadcasting
+# Logging: when ON, logs are stored, broadcast to WS, and printed to Render console
+logging_enabled = True
 
-# Lock to prevent simultaneous bot starts
 bot_start_lock = asyncio.Lock()
-
-# Global settings
-logging_enabled = True  # Toggle to control log broadcasting
 
 bot_state = {
     "is_running": False,
@@ -337,6 +421,9 @@ bot_state = {
     "uptime": 0,
     "total_messages_sent": 0,
     "total_messages_received": 0,
+    "messages_today": 0,
+    "activity_date": None,
+    "active_commands": 0,
     "active_users": 0,
     "last_activity": None,
     "config": {
@@ -347,6 +434,11 @@ bot_state = {
     },
     "activity_history": {}  # Stores message counts by hour: {"HH:00": count}
 }
+
+# Simple in-memory rate limiter for AI calls: {username: (minute_ts, count)}
+ai_rate_limits: dict = {}
+ai_rate_lock = asyncio.Lock()
+AI_RATE_LIMIT_PER_MIN = 20
 
 @app.get("/api/settings/logging")
 async def get_logging_status(
@@ -372,16 +464,24 @@ async def toggle_logging(
 async def get_bot_status(
     current_user: User = Depends(check_permission(Permission.VIEW_BOT_STATUS))
 ):
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "D", "location": "main.py:385", "message": "get_bot_status called", "data": {"bot_state_is_running": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     return BotStatus(**bot_state)
 
 @app.post("/api/bot/start")
 async def start_bot(
     current_user: User = Depends(check_permission(Permission.CONTROL_BOT)) 
 ):
-    global bot_start_lock
-    async with bot_start_lock:
-        if bot_state["is_running"]:
-            return {"message": "Bot is already running", "status": bot_state}
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "main.py:388", "message": "API /api/bot/start called", "data": {"username": current_user.username, "is_running_before": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
+        global bot_start_lock
+        async with bot_start_lock:
+            if bot_state["is_running"]:
+                return {"message": "Bot is already running", "status": bot_state}
         
         try:
             cookies = json.loads(settings.zalo_cookies)
@@ -395,8 +495,14 @@ async def start_bot(
             asyncio.create_task(asyncio.to_thread(bot_runner.start_bot_background))
             
             bot_state["is_running"] = True
-            bot_state["start_time"] = datetime.now(timezone.utc).isoformat()
-            bot_state["last_activity"] = datetime.now(timezone.utc).isoformat()
+            from datetime import timedelta
+            gmt7 = timezone(timedelta(hours=7))
+            bot_state["start_time"] = datetime.now(gmt7).isoformat()
+            bot_state["last_activity"] = datetime.now(gmt7).isoformat()
+            # #region agent log
+            with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "main.py:411", "message": "Bot state updated after start", "data": {"is_running": bot_state["is_running"], "start_time": bot_state["start_time"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+            # #endregion
             
             await manager.broadcast_bot_status(bot_state)
             await manager.broadcast_log("INFO", f"Bot đã được khởi động bởi {current_user.username}")
@@ -412,8 +518,27 @@ async def start_bot(
 async def stop_bot(
     current_user: User = Depends(check_permission(Permission.CONTROL_BOT))
 ):
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "B", "location": "main.py:421", "message": "API /api/bot/stop called", "data": {"username": current_user.username, "is_running_before": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "main.py:421", "message": "API /api/bot/stop called", "data": {"username": current_user.username, "is_running_before": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
+    
+    # Thực sự dừng bot thread
+    try:
+        bot_runner.stop_bot()
+    except Exception as e:
+        print(f"Error stopping bot runner: {e}")
+    
     bot_state["is_running"] = False
     bot_state["start_time"] = None
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "main.py:438", "message": "Bot state updated after stop", "data": {"is_running": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     await manager.broadcast_bot_status(bot_state)
     await manager.broadcast_log("INFO", f"Bot stopped by {current_user.username}")
     
@@ -427,8 +552,23 @@ async def stop_bot(
 async def restart_bot(
     current_user: User = Depends(check_permission(Permission.CONTROL_BOT))
 ):
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "A", "location": "main.py:437", "message": "API /api/bot/restart called", "data": {"username": current_user.username, "is_running_before": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
+    
+    # Thực sự dừng bot thread trước khi restart
+    try:
+        bot_runner.stop_bot()
+    except Exception as e:
+        print(f"Error stopping bot runner during restart: {e}")
+    
     bot_state["is_running"] = False
     bot_state["start_time"] = None
+    # #region agent log
+    with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "main.py:457", "message": "Bot state updated before restart", "data": {"is_running": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    # #endregion
     await manager.broadcast_log("INFO", f"Bot restarting by {current_user.username}...")
     
     # Clear logs when bot restarts
@@ -436,11 +576,32 @@ async def restart_bot(
     await db.logs.delete_many({})
     
     await asyncio.sleep(1)
-    bot_state["is_running"] = True
-    bot_state["start_time"] = datetime.now(timezone.utc).isoformat()
-    bot_state["last_activity"] = datetime.now(timezone.utc).isoformat()
-    await manager.broadcast_bot_status(bot_state)
-    await manager.broadcast_log("INFO", "Bot restarted successfully")
+    
+    # Khởi động lại bot
+    try:
+        cookies = json.loads(settings.zalo_cookies)
+        bot_runner.initialize_bot(
+            settings.zalo_api_key, 
+            settings.zalo_secret_key, 
+            settings.zalo_imei, 
+            cookies
+        )
+        
+        asyncio.create_task(asyncio.to_thread(bot_runner.start_bot_background))
+        
+        bot_state["is_running"] = True
+        from datetime import timedelta
+        gmt7 = timezone(timedelta(hours=7))
+        bot_state["start_time"] = datetime.now(gmt7).isoformat()
+        bot_state["last_activity"] = datetime.now(gmt7).isoformat()
+        await manager.broadcast_bot_status(bot_state)
+        await manager.broadcast_log("INFO", "Bot restarted successfully")
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Error restarting bot: {error_msg}")
+        await manager.broadcast_log("ERROR", f"Lỗi khởi động lại: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+    
     return {"message": "Bot restarted successfully", "status": bot_state}
 
 @app.get("/api/bot/config", response_model=BotConfig)
@@ -457,6 +618,39 @@ async def update_bot_config(
     bot_state["config"] = config.dict()
     await manager.broadcast_log("INFO", f"Bot config updated by {current_user.username}")
     return config
+
+
+class BotActivityPayload(BaseModel):
+    messages_sent: int = 0
+    messages_received: int = 0
+    commands_used: int = 0
+
+
+@app.post("/api/bot/activity")
+async def report_bot_activity(payload: BotActivityPayload):
+    """Called by bot process to report message/command activity (no auth for internal use)."""
+    # Use GMT+7 (Bangkok/Hanoi/Jakarta timezone)
+    from datetime import timedelta
+    gmt7 = timezone(timedelta(hours=7))
+    now = datetime.now(gmt7)
+    today = now.date()
+    if bot_state.get("activity_date") != today:
+        bot_state["activity_date"] = today
+        bot_state["messages_today"] = 0
+        bot_state["activity_history"] = {}
+    hour_key = now.strftime("%H:00")
+    bot_state["activity_history"][hour_key] = bot_state["activity_history"].get(hour_key, 0) + (
+        payload.messages_sent + payload.messages_received
+    )
+    bot_state["total_messages_sent"] = bot_state.get("total_messages_sent", 0) + payload.messages_sent
+    bot_state["total_messages_received"] = bot_state.get("total_messages_received", 0) + payload.messages_received
+    bot_state["messages_today"] = bot_state.get("messages_today", 0) + (
+        payload.messages_sent + payload.messages_received
+    )
+    bot_state["active_commands"] = bot_state.get("active_commands", 0) + payload.commands_used
+    bot_state["last_activity"] = now.isoformat()
+    return {"ok": True}
+
 
 @app.get("/api/logs", response_model=List[LogEntry])
 async def get_logs(
@@ -480,9 +674,103 @@ async def get_logs(
         ))
     return logs
 
+@app.get("/api/command-logs", response_model=List[CommandLog])
+async def get_command_logs(
+    limit: int = 100,
+    command_type: Optional[str] = None,
+    current_user: User = Depends(check_permission(Permission.VIEW_LOGS))
+):
+    """Get command/activity logs with user interaction support"""
+    db = await get_database()
+    query = {}
+    if command_type:
+        query["command_type"] = command_type
+    
+    logs = []
+    async for log in db.command_logs.find(query).sort("timestamp", -1).limit(limit):
+        logs.append(CommandLog(
+            id=str(log["_id"]),
+            timestamp=log["timestamp"],
+            command_type=log["command_type"],
+            message=log["message"],
+            raw_content=log["raw_content"],
+            user_info=log.get("user_info"),
+            thread_id=log.get("thread_id"),
+            details=log.get("details")
+        ))
+    return logs
+
+@app.post("/api/command-logs")
+async def create_command_log(log: dict):
+    """Endpoint for bot to send command/activity logs with user info"""
+    db = await get_database()
+    log_entry = {
+        "_id": ObjectId(),
+        "timestamp": datetime.utcnow(),
+        "command_type": log.get("command_type", "user_command"),
+        "message": log.get("message", ""),
+        "raw_content": log.get("raw_content", ""),
+        "user_info": log.get("user_info"),
+        "thread_id": log.get("thread_id"),
+        "details": log.get("details", {})
+    }
+    await db.command_logs.insert_one(log_entry)
+    
+    # Broadcast to WebSocket if enabled
+    if logging_enabled:
+        await manager.broadcast({
+            "type": "command_log",
+            "id": str(log_entry["_id"]),
+            "timestamp": log_entry["timestamp"].isoformat(),
+            "command_type": log_entry["command_type"],
+            "message": log_entry["message"],
+            "raw_content": log_entry["raw_content"],
+            "user_info": log_entry["user_info"],
+            "thread_id": log_entry["thread_id"]
+        })
+    
+    return {"message": "Command log created successfully"}
+
+@app.get("/api/users/{user_id}/profile", response_model=UserProfile)
+async def get_user_profile(
+    user_id: str,
+    current_user: User = Depends(check_permission(Permission.VIEW_USERS))
+):
+    """Get detailed user profile with statistics"""
+    db = await get_database()
+    
+    # Get user basic info
+    user_dict = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user_dict:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Count user's commands/messages from logs
+    command_count = await db.command_logs.count_documents({
+        "user_info.user_id": user_id
+    })
+    
+    # Create user profile
+    profile = UserProfile(
+        id=str(user_dict["_id"]),
+        username=user_dict["username"],
+        email=user_dict.get("email"),
+        full_name=user_dict.get("full_name"),
+        role=user_dict["role"],
+        is_active=user_dict["is_active"],
+        created_at=user_dict["created_at"],
+        last_login=user_dict.get("last_login"),
+        total_commands=command_count,
+        total_messages=command_count  # For now, same as commands
+    )
+    
+    return profile
+
 @app.post("/api/logs")
 async def create_log(log: dict):
-    """Endpoint for bot to send logs (protected by API key)"""
+    """Endpoint for bot to send logs. When logging is OFF: no store, no broadcast, no console. When ON: store, broadcast, and print to Render console."""
+    if not logging_enabled:
+        return {"message": "logging disabled"}
+
     db = await get_database()
     log_entry = {
         "_id": ObjectId(),
@@ -498,7 +786,9 @@ async def create_log(log: dict):
         log_entry["message"],
         log_entry["details"]
     )
-    
+    # Print to stdout so it appears on Render.com console
+    print(f"[{log_entry['level']}] {log_entry['message']}", flush=True)
+
     return {"message": "Log created successfully"}
 
 @app.get("/api/dashboard/stats", response_model=DashboardStats)
@@ -520,7 +810,9 @@ async def get_dashboard_stats(
     # Calculate uptime if bot is running
     uptime_seconds = 0
     if bot_state["is_running"] and bot_state.get("start_time"):
-        uptime_seconds = int((datetime.now(timezone.utc) - datetime.fromisoformat(bot_state["start_time"])).total_seconds())
+        from datetime import timedelta
+        gmt7 = timezone(timedelta(hours=7))
+        uptime_seconds = int((datetime.now(gmt7) - datetime.fromisoformat(bot_state["start_time"])).total_seconds())
 
     recent_logs = []
     async for log in db.logs.find().sort("timestamp", -1).limit(5):
@@ -537,7 +829,9 @@ async def get_dashboard_stats(
     activity_history = bot_state.get("activity_history", {})
     
     # Generate time slots for the last 6 hours or since bot started
-    now = datetime.now(timezone.utc)
+    from datetime import timedelta
+    gmt7 = timezone(timedelta(hours=7))
+    now = datetime.now(gmt7)
     for i in range(5, -1, -1):
         hour_time = now - timedelta(hours=i)
         time_key = hour_time.strftime("%H:00")
@@ -547,8 +841,8 @@ async def get_dashboard_stats(
     stats = DashboardStats(
         total_users=total_users,
         bot_uptime=uptime_seconds,
-        messages_today=bot_state["total_messages_sent"],
-        active_commands=0,
+        messages_today=bot_state.get("messages_today", 0),
+        active_commands=bot_state.get("active_commands", 0),
         recent_logs=recent_logs,
         user_breakdown=user_breakdown,
         activity_data=activity_data
@@ -569,6 +863,381 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             await manager.send_personal_message(f"Echo: {data}", websocket)
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
+
+
+class AIRequest(BaseModel):
+    message: str
+    thread_id: Optional[str] = None
+
+
+class AIResponse(BaseModel):
+    reply: str
+
+
+@app.post("/api/ai/chat", response_model=AIResponse)
+async def ai_chat(
+    request: AIRequest,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Chat with AI using Gemini with API key rotation."""
+    if not generate_ai_content:
+        raise HTTPException(status_code=503, detail="AI service not available")
+    
+    try:
+        # Apply rate limiting
+        async with ai_rate_lock:
+            username = current_user.username
+            now = int(time.time() // 60)  # Current minute timestamp
+            user_limit = ai_rate_limits.get(username, (now, 0))
+            
+            # Reset counter if new minute
+            if user_limit[0] != now:
+                ai_rate_limits[username] = (now, 1)
+            else:
+                # Check rate limit
+                if user_limit[1] >= AI_RATE_LIMIT_PER_MIN:
+                    raise HTTPException(
+                        status_code=429, 
+                        detail=f"Rate limit exceeded. Max {AI_RATE_LIMIT_PER_MIN} requests per minute."
+                    )
+                ai_rate_limits[username] = (now, user_limit[1] + 1)
+        
+        # Generate response
+        reply = generate_ai_content(request.message, request.thread_id)
+        return AIResponse(reply=reply)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+
+# Gemini API Key Management Endpoints
+@app.get("/api/gemini/status")
+async def get_gemini_status(
+    current_user: User = Depends(check_permission(Permission.VIEW_BOT_STATUS))
+):
+    """Get status of Gemini API keys for monitoring."""
+    if not get_api_key_status:
+        raise HTTPException(status_code=503, detail="Gemini client not available")
+    
+    try:
+        status = get_api_key_status()
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get Gemini status: {str(e)}")
+
+
+@app.post("/api/gemini/reset-keys")
+async def reset_gemini_keys(
+    current_user: User = Depends(check_permission(Permission.CONFIGURE_BOT))
+):
+    """Reset failed Gemini API keys (manual intervention)."""
+    if not reset_failed_keys:
+        raise HTTPException(status_code=503, detail="Gemini client not available")
+    
+    try:
+        reset_failed_keys()
+        await manager.broadcast_log("INFO", f"Gemini API keys reset by {current_user.username}")
+        return {"message": "Failed API keys reset successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset API keys: {str(e)}")
+
+
+# Chat System Endpoints
+@app.post("/api/chat/session")
+async def create_chat_session(
+    session_data: dict,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a new chat session for user to communicate with admins/mods."""
+    try:
+        db = await get_database()
+        
+        # Generate unique session ID
+        session_id = f"chat_{int(time.time())}_{current_user.id}"
+        
+        # Create chat session
+        chat_session = {
+            "_id": ObjectId(),
+            "sessionId": session_id,
+            "userId": current_user.id,
+            "username": current_user.username,
+            "fullName": session_data.get("fullName"),
+            "userRole": current_user.role,
+            "userType": session_data.get("userType", current_user.role),
+            "createdAt": datetime.now(timezone.utc),
+            "lastActivity": datetime.now(timezone.utc),
+            "messages": [],
+            "isActive": True,
+            "targetType": None  # Will be set when first message is sent
+        }
+        
+        await db.chat_sessions.insert_one(chat_session)
+        
+        return {
+            "sessionId": session_id,
+            "messages": []
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create chat session: {str(e)}")
+
+
+@app.post("/api/chat/message")
+async def send_chat_message(
+    message_data: dict,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Send a message from user to admins/mods."""
+    try:
+        db = await get_database()
+        session_id = message_data.get("sessionId")
+        content = message_data.get("content")
+        target_type = message_data.get("targetType", "admin")
+        
+        if not session_id or not content:
+            raise HTTPException(status_code=400, detail="Session ID and content are required")
+        
+        # Update session target type if not set
+        await db.chat_sessions.update_one(
+            {"sessionId": session_id, "userId": current_user.id},
+            {
+                "$set": {
+                    "targetType": target_type,
+                    "lastActivity": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Create message
+        message = {
+            "_id": ObjectId(),
+            "sessionId": session_id,
+            "content": content,
+            "sender": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "fullName": current_user.full_name,
+                "role": current_user.role
+            },
+            "timestamp": datetime.now(timezone.utc),
+            "type": "user",
+            "targetType": target_type
+        }
+        
+        # Add message to session
+        await db.chat_sessions.update_one(
+            {"sessionId": session_id},
+            {"$push": {"messages": message}}
+        )
+        
+        # Broadcast to admins/mods via WebSocket
+        await manager.broadcast({
+            "type": "new_chat_message",
+            "message": {
+                "id": str(message["_id"]),
+                "sessionId": session_id,
+                "content": content,
+                "sender": message["sender"],
+                "timestamp": message["timestamp"].isoformat(),
+                "type": "user",
+                "targetType": target_type
+            }
+        })
+        
+        # Auto-reply logic (simple for now)
+        auto_reply = "Cảm ơn tin nhắn của bạn. Quản trị viên sẽ phản hồi sớm nhất có thể."
+        
+        return {
+            "reply": auto_reply,
+            "messageId": str(message["_id"])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+
+
+@app.delete("/api/chat/session/{session_id}")
+async def cleanup_chat_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Clean up chat session (called after 20 minutes or page reload)."""
+    try:
+        db = await get_database()
+        
+        # Delete session and messages
+        result = await db.chat_sessions.delete_one({
+            "sessionId": session_id,
+            "userId": current_user.id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return {"message": "Session cleaned up successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup session: {str(e)}")
+
+
+@app.get("/api/chat/admin/sessions")
+async def get_admin_chat_sessions(
+    target_type: str = "admin",
+    current_user: User = Depends(check_permission(Permission.VIEW_LOGS))
+):
+    """Get all active chat sessions for admins/mods."""
+    try:
+        db = await get_database()
+        
+        # Get active sessions for the specified target type
+        sessions = await db.chat_sessions.find({
+            "targetType": target_type,
+            "isActive": True,
+            "lastActivity": {"$gte": datetime.now(timezone.utc) - timedelta(minutes=20)}
+        }).sort("lastActivity", -1).to_list(length=100)
+        
+        # Convert ObjectId to string and format
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "id": str(session["_id"]),
+                "sessionId": session["sessionId"],
+                "userId": session["userId"],
+                "username": session["username"],
+                "fullName": session.get("fullName"),
+                "userRole": session["userRole"],
+                "targetType": session["targetType"],
+                "createdAt": session["createdAt"],
+                "lastActivity": session["lastActivity"],
+                "messages": session.get("messages", [])
+            })
+        
+        return {"sessions": formatted_sessions}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get sessions: {str(e)}")
+
+
+@app.get("/api/chat/admin/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: str,
+    current_user: User = Depends(check_permission(Permission.VIEW_LOGS))
+):
+    """Get all messages for a specific chat session."""
+    try:
+        db = await get_database()
+        
+        session = await db.chat_sessions.find_one({"sessionId": session_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return {
+            "messages": session.get("messages", [])
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get messages: {str(e)}")
+
+
+@app.post("/api/chat/admin/message")
+async def send_admin_message(
+    message_data: dict,
+    current_user: User = Depends(check_permission(Permission.VIEW_LOGS))
+):
+    """Send a message from admin/mod to user."""
+    try:
+        db = await get_database()
+        session_id = message_data.get("sessionId")
+        content = message_data.get("content")
+        sender_type = message_data.get("senderType", current_user.role)
+        
+        if not session_id or not content:
+            raise HTTPException(status_code=400, detail="Session ID and content are required")
+        
+        # Create admin message
+        message = {
+            "_id": ObjectId(),
+            "sessionId": session_id,
+            "content": content,
+            "sender": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "fullName": current_user.full_name,
+                "role": current_user.role
+            },
+            "timestamp": datetime.now(timezone.utc),
+            "type": "admin",
+            "senderType": sender_type
+        }
+        
+        # Add message to session
+        await db.chat_sessions.update_one(
+            {"sessionId": session_id},
+            {
+                "$push": {"messages": message},
+                "$set": {"lastActivity": datetime.now(timezone.utc)}
+            }
+        )
+        
+        # Broadcast to user via WebSocket
+        await manager.broadcast({
+            "type": "admin_reply",
+            "sessionId": session_id,
+            "message": {
+                "id": str(message["_id"]),
+                "content": content,
+                "sender": message["sender"],
+                "timestamp": message["timestamp"].isoformat(),
+                "type": "admin"
+            }
+        })
+        
+        return {"messageId": str(message["_id"])}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send admin message: {str(e)}")
+
+
+# Cleanup old chat sessions (runs every 5 minutes)
+@app.delete("/api/chat/cleanup-old")
+async def cleanup_old_chat_sessions():
+    """Clean up chat sessions older than 20 minutes."""
+    try:
+        db = await get_database()
+        
+        # Delete sessions older than 20 minutes
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=20)
+        result = await db.chat_sessions.delete_many({
+            "lastActivity": {"$lt": cutoff_time}
+        })
+        
+        return {
+            "deleted_count": result.deleted_count,
+            "message": f"Cleaned up {result.deleted_count} old sessions"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup old sessions: {str(e)}")
+
+
+# Auto cleanup task (runs every 5 minutes)
+async def auto_cleanup_chat_sessions():
+    """Automatically clean up old chat sessions."""
+    while True:
+        try:
+            await cleanup_old_chat_sessions()
+        except Exception as e:
+            logger.error(f"Auto cleanup failed: {e}")
+        
+        # Wait 5 minutes
+        await asyncio.sleep(300)
+
 
 if __name__ == "__main__":
     import uvicorn

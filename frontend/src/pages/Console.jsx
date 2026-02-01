@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { logsAPI, botAPI } from '../services/api';
+import { logsAPI, botAPI, settingsAPI } from '../services/api';
 import websocket from '../services/websocket';
 import { Terminal, Download, Trash2, Send } from 'lucide-react';
 import { format } from 'date-fns';
@@ -11,11 +11,13 @@ export default function Console() {
   const [activeTab, setActiveTab] = useState('logs');
   const [filter, setFilter] = useState('ALL');
   const [autoScroll, setAutoScroll] = useState(true);
+  const [loggingEnabled, setLoggingEnabled] = useState(true);
   const bottomRef = useRef(null);
   const commandInputRef = useRef(null);
 
   useEffect(() => {
     loadLogs();
+    settingsAPI.getLoggingStatus().then((r) => setLoggingEnabled(!!r.data?.enabled)).catch(() => {});
 
     const handleNewLog = (logData) => {
       setLogs(prev => [logData, ...prev].slice(0, 1000));
@@ -65,6 +67,17 @@ export default function Console() {
   const clearCommands = () => {
     if (window.confirm('Xóa lịch sử lệnh?')) {
       setCommandHistory([]);
+    }
+  };
+
+  const handleLoggingToggle = async () => {
+    const next = !loggingEnabled;
+    try {
+      await settingsAPI.setLoggingStatus(next);
+      setLoggingEnabled(next);
+    } catch (error) {
+      console.error('Failed to toggle logging:', error);
+      alert('Lỗi: Không thể thay đổi cấu hình logging');
     }
   };
 
@@ -177,6 +190,21 @@ export default function Console() {
           </div>
           <h1 className="text-xl font-display font-bold text-white">Console</h1>
         </div>
+        
+        {/* Logging Toggle */}
+        <button
+          onClick={handleLoggingToggle}
+          className={`px-3 py-2 rounded-lg border transition-colors ${
+            loggingEnabled
+              ? 'bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20'
+              : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+          }`}
+          title={loggingEnabled ? 'Gửi logs' : 'Không gửi logs'}
+        >
+          <span className="text-xs font-medium">
+            {loggingEnabled ? 'Logs: ON' : 'Logs: OFF'}
+          </span>
+        </button>
       </div>
 
       {/* Main Console Card */}

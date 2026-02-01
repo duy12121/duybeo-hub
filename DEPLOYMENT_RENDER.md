@@ -80,7 +80,7 @@ git push origin main
 ### 3.1 Tạo Web Service
 1. Đăng nhập [Render.com](https://render.com)
 2. **New** → **Web Service**
-3. **Connect repository** → chọn repository GitHub của bạn
+3. **Connect repository** → chọn repository GitHuba
    - Nếu lần đầu, cấp quyền GitHub access
 4. Điền thông tin:
    - **Name**: `zalo-bot-api`
