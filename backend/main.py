@@ -45,60 +45,21 @@ async def lifespan(app: FastAPI):
     # if settings.auto_start_bot.lower() == "true":
     #     try:
     #         print("🤖 Đang nạp cấu hình Bot từ settings...")
-    #         cookies = json.loads(settings.zalo_cookies)
-    #         
-    #         bot_runner.initialize_bot(
-    #             settings.zalo_api_key, 
-    #             settings.zalo_secret_key, 
-    #             settings.zalo_imei, 
-    #             cookies
-    #         )
-    #         
-    #         await asyncio.sleep(0.5)
-    #
-    #         asyncio.create_task(asyncio.to_thread(bot_runner.start_bot_background))
-    #         
-    #         bot_state["is_running"] = True
-    #         print("✅ Zalo Bot đã được ra lệnh chạy ngầm...")
-    #     except Exception as e:
-    #         print(f"❌ Lỗi khởi động Bot: {e}")
-
-    db = await get_database()
-    admin_exists = await db.users.find_one({"role": UserRole.SUPER_ADMIN})
-    if not admin_exists:
-        # Use environment variables for admin credentials with secure defaults
-        default_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
-        default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")  # Change in production!
-        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@zalobot.local")
-        
-        default_admin = {
-            "_id": ObjectId(),
-            "username": default_username,
-            "email": default_email,
-            "full_name": "Super Admin",
-            "hashed_password": get_password_hash(default_password),
-            "role": UserRole.SUPER_ADMIN,
-            "is_active": True,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
-        }
-        await db.users.insert_one(default_admin)
-        print(f"✅ Default super admin created: {default_username}/{default_password}")
-        print("⚠️  IMPORTANT: Change default admin credentials in production!")
-    
-    # Start auto cleanup task
-    cleanup_task = asyncio.create_task(auto_cleanup_chat_sessions())
+    try:
+        cleanup_task = asyncio.create_task(auto_cleanup_chat_sessions())
+    except Exception as e:
+        print(f"⚠️  Cleanup task failed: {e}")
+        cleanup_task = None
     
     yield
     
     # Cleanup task on shutdown
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass 
-
-    await close_mongo_connection()
+    if cleanup_task:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
 
