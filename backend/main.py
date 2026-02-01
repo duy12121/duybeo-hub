@@ -76,8 +76,34 @@ app = FastAPI(title="Zalo Bot Manager API", version="1.0.0", lifespan=lifespan)
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
-FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
+
+def _detect_frontend_dist_dir() -> Path:
+    override = os.environ.get("FRONTEND_DIST_PATH")
+    if override:
+        return Path(override)
+
+    candidates = [
+        PROJECT_ROOT / "frontend" / "dist",
+        BACKEND_DIR / ".." / "frontend" / "dist",
+        Path.cwd() / "frontend" / "dist",
+        Path.cwd() / "dist",
+    ]
+
+    for c in candidates:
+        try:
+            c = c.resolve()
+            if (c / "index.html").exists():
+                return c
+        except Exception:
+            continue
+
+    return (PROJECT_ROOT / "frontend" / "dist").resolve()
+
+
+FRONTEND_DIST_DIR = _detect_frontend_dist_dir()
 FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
+
+ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS") == "1"
 
 @app.get("/health")
 async def health_check_root():
@@ -99,6 +125,14 @@ async def health_check():
 
 # Serve static files (frontend) - with fallback
 try:
+    print(f"[frontend] backend_dir={BACKEND_DIR}")
+    print(f"[frontend] project_root={PROJECT_ROOT}")
+    print(f"[frontend] cwd={Path.cwd()}")
+    print(f"[frontend] dist_dir={FRONTEND_DIST_DIR}")
+    print(f"[frontend] index_file={FRONTEND_INDEX_FILE}")
+    print(f"[frontend] dist_exists={FRONTEND_DIST_DIR.exists()}")
+    print(f"[frontend] index_exists={FRONTEND_INDEX_FILE.exists()}")
+
     if not FRONTEND_INDEX_FILE.exists():
         raise FileNotFoundError(f"Missing frontend build: {FRONTEND_INDEX_FILE}")
 
@@ -111,6 +145,33 @@ try:
 except Exception as e:
     FRONTEND_AVAILABLE = False
     print(f"⚠️  Frontend static files not found: {e}")
+
+if ENABLE_DEBUG_ENDPOINTS:
+    @app.get("/api/debug/frontend", include_in_schema=False)
+    async def debug_frontend_files():
+        def _safe_listdir(p: Path, limit: int = 50):
+            try:
+                if not p.exists() or not p.is_dir():
+                    return []
+                items = sorted([x.name for x in p.iterdir()])
+                return items[:limit]
+            except Exception:
+                return []
+
+        assets_dir = FRONTEND_DIST_DIR / "assets"
+        return {
+            "cwd": str(Path.cwd()),
+            "backend_dir": str(BACKEND_DIR),
+            "project_root": str(PROJECT_ROOT),
+            "dist_dir": str(FRONTEND_DIST_DIR),
+            "dist_exists": FRONTEND_DIST_DIR.exists(),
+            "index_file": str(FRONTEND_INDEX_FILE),
+            "index_exists": FRONTEND_INDEX_FILE.exists(),
+            "assets_dir": str(assets_dir),
+            "assets_exists": assets_dir.exists(),
+            "dist_list": _safe_listdir(FRONTEND_DIST_DIR),
+            "assets_list": _safe_listdir(assets_dir),
+        }
 
 @app.get("/")
 async def read_index():
