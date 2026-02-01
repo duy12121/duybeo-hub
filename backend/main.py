@@ -1203,6 +1203,11 @@ async def auto_cleanup_chat_sessions():
 if __name__ == "__main__":
     import uvicorn
     import logging
+    import os
+    
+    # Get port from Render environment or default to 8000
+    port = int(os.environ.get("PORT", 8000))
+    host = "0.0.0.0"  # Required for Render
     
     # Suppress uvicorn/Starlette INFO logs to reduce spam
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -1210,4 +1215,13 @@ if __name__ == "__main__":
     logging.getLogger("starlette").setLevel(logging.WARNING)
     
     # Disable access logs and reduce connection close spam
-    uvicorn.run(app, host="0.0.0.0", port=8000, access_log=False, log_level="warning")
+    print(f"🚀 Starting server on {host}:{port}")
+    
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=False,
+        access_log=False,
+        log_level="warning"
+    )
