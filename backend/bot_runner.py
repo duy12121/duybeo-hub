@@ -338,6 +338,8 @@ class ZaloBotRunner:
                             "reason": "Cookies may have expired or login credentials are invalid",
                             "suggestion": "Please re-authenticate by updating bot credentials via web dashboard"
                         })
+                        self.running = False
+                        logger.error("Set self.running = False due to startup failure")
                         raise
                 else:
                     raise
