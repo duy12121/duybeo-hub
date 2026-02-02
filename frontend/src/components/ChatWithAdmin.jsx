@@ -11,6 +11,39 @@ const ChatWithAdmin = memo(({ currentUser, isOpen, onClose }) => {
   const [chatSessions, setChatSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
 
+  // WebSocket for receiving admin replies
+  useEffect(() => {
+    if (!isOpen || !activeSessionId) return;
+
+    const wsBase = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '') ||
+      `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+    const ws = new WebSocket(`${wsBase}/ws/chat`);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'admin_reply' && data.sessionId === activeSessionId && data.message) {
+          setMessages((prev) => [...prev, data.message]);
+          setIsTyping(false);
+        }
+      } catch (e) {
+        console.error('Failed to parse chat ws message:', e);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error('Chat WebSocket error:', e);
+    };
+
+    return () => {
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+    };
+  }, [isOpen, activeSessionId]);
+
   // Initialize chat session
   useEffect(() => {
     if (isOpen && !activeSessionId) {

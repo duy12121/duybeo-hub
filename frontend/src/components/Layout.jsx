@@ -207,7 +207,7 @@ export default function Layout() {
       </main>
 
       {/* Floating AI Chat - bottom right */}
-      {hasPermission('configure_bot') && (
+      {!!user && (
         <>
           {!aiChatOpen && (
             <AiChatFloatingButton

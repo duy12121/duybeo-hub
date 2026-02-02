@@ -564,6 +564,20 @@ async def get_bot_status(
     with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "D", "location": "main.py:385", "message": "get_bot_status called", "data": {"bot_state_is_running": bot_state["is_running"]}, "timestamp": int(time.time() * 1000)}) + "\n")
     # #endregion
+    try:
+        runner_status = bot_runner.get_bot_status()
+        actual_running = bool(runner_status.get("running"))
+    except Exception:
+        actual_running = False
+
+    prev_running = bool(bot_state.get("is_running"))
+    if prev_running != actual_running:
+        bot_state["is_running"] = actual_running
+        if not actual_running:
+            bot_state["start_time"] = None
+            bot_state["uptime"] = 0
+        await manager.broadcast_bot_status(bot_state)
+
     return BotStatus(**bot_state)
 
 @app.post("/api/bot/start")
