@@ -317,7 +317,7 @@ class ZaloBotRunner:
                     f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:289", "message": "Bot instance created and attempting to listen", "data": {"bot_name": bot_name}, "timestamp": int(time.time() * 1000)}) + "\n")
                 # #endregion
                 self.running_event.set() # Signal that the bot should be running
-                self.bot_thread = Thread(target=self.bot.listen, daemon=True)
+                self.bot_thread = Thread(target=self._run_bot_with_error_handling, daemon=True)
                 self.bot_thread.start()
 
                 return
@@ -341,6 +341,30 @@ class ZaloBotRunner:
                         raise
                 else:
                     raise
+    
+    def _run_bot_with_error_handling(self):
+        """Wrapper to catch bot thread crashes and update state"""
+        try:
+            self.bot.listen()
+        except Exception as e:
+            logger.error(f"Bot thread crashed: {e}", exc_info=True)
+            self.running = False
+            # Notify backend to update bot_state and broadcast
+            try:
+                import asyncio
+                # Try to notify main app to update bot_state
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                # Import here to avoid circular import
+                from main import manager, bot_state
+                bot_state["is_running"] = False
+                bot_state["start_time"] = None
+                bot_state["uptime"] = 0
+                loop.run_until_complete(manager.broadcast_bot_status(bot_state))
+                loop.run_until_complete(manager.broadcast_log("ERROR", f"Bot thread crashed: {e}"))
+                loop.close()
+            except Exception as notify_e:
+                logger.error(f"Failed to notify bot crash: {notify_e}")
     
     def _run_mock_bot(self):
         """Run mock bot for testing without zlapi"""
