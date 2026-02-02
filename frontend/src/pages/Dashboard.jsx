@@ -187,6 +187,15 @@ const Dashboard = memo(() => {
       const detail = error.response?.data?.detail;
       if (error.response?.status === 403) {
         alert('Bạn không có quyền thực hiện thao tác này. Cần quyền CONTROL_BOT.');
+      } else if (error.response?.status === 400) {
+        // Show more user-friendly error for missing cookies/credentials
+        if (detail?.includes('ZALO_COOKIES') || detail?.includes('Missing')) {
+          alert('Lỗi cấu hình bot: Thiếu hoặc sai ZALO_COOKIES. Vui lòng cập nhật cookie Zalo hợp lệ trong biến môi trường.');
+        } else if (detail?.includes('Invalid ZALO_COOKIES JSON')) {
+          alert('Lỗi cấu hình bot: ZALO_COOKIES không đúng định dạng JSON. Vui lòng kiểm tra lại biến môi trường.');
+        } else {
+          alert(`Lỗi cấu hình: ${detail || error.message}`);
+        }
       } else {
         alert(`Lỗi: ${detail || error.message}`);
       }

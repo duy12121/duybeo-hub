@@ -595,18 +595,26 @@ async def start_bot(
         
         try:
             if not settings.zalo_api_key or not settings.zalo_secret_key or not settings.zalo_imei:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Missing Zalo credentials. Please set ZALO_API_KEY, ZALO_SECRET_KEY, ZALO_IMEI."
-                )
+                error_detail = "Missing Zalo credentials. Please set ZALO_API_KEY, ZALO_SECRET_KEY, ZALO_IMEI."
+                logger.error(f"Bot start failed: {error_detail}")
+                await manager.broadcast_log("ERROR", error_detail)
+                raise HTTPException(status_code=400, detail=error_detail)
 
             if not settings.zalo_cookies or settings.zalo_cookies.strip() in ("{}", "", "null", "None"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Missing ZALO_COOKIES. Cookie login is required; phone/password login is not supported by zlapi."
-                )
+                error_detail = "Missing ZALO_COOKIES. Cookie login is required; phone/password login is not supported by zlapi."
+                logger.error(f"Bot start failed: {error_detail}")
+                await manager.broadcast_log("ERROR", error_detail)
+                raise HTTPException(status_code=400, detail=error_detail)
 
-            cookies = json.loads(settings.zalo_cookies)
+            try:
+                cookies = json.loads(settings.zalo_cookies)
+            except json.JSONDecodeError as e:
+                error_detail = f"Invalid ZALO_COOKIES JSON format: {e}"
+                logger.error(f"Bot start failed: {error_detail}")
+                await manager.broadcast_log("ERROR", error_detail)
+                raise HTTPException(status_code=400, detail=error_detail)
+
+            logger.info(f"Initializing bot with API key, secret, IMEI, and cookies for user {current_user.username}")
             bot_runner.initialize_bot(
                 settings.zalo_api_key, 
                 settings.zalo_secret_key, 
@@ -614,6 +622,7 @@ async def start_bot(
                 cookies
             )
             
+            logger.info("Starting bot background task...")
             asyncio.create_task(asyncio.to_thread(bot_runner.start_bot_background))
             
             bot_state["is_running"] = True
@@ -630,11 +639,13 @@ async def start_bot(
             await manager.broadcast_log("INFO", f"Bot đã được khởi động bởi {current_user.username}")
             
             return {"message": "Bot started successfully", "status": bot_state}
+        except HTTPException:
+            raise
         except Exception as e:
             error_msg = str(e)
-            print(f"Error starting bot: {error_msg}")
-            await manager.broadcast_log("ERROR", f"Lỗi khởi động: {error_msg}")
-            raise HTTPException(status_code=500, detail=error_msg)
+            logger.error(f"Unexpected error starting bot: {error_msg}", exc_info=True)
+            await manager.broadcast_log("ERROR", f"Lỗi khởi động bot: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {error_msg}")
 
 @app.post("/api/bot/stop")
 async def stop_bot(
