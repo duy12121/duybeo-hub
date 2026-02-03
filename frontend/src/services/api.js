@@ -21,11 +21,21 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log("✨ Phước báo tràn đầy, API đã hồi đáp.");
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
+      console.log("🚪 Chưa đủ căn cơ, xin đăng nhập để tiếp tục tu hành.");
       localStorage.removeItem('token');
       window.location.href = '/login';
+    } else if (error.response?.status === 403) {
+      console.log("⛔ Vô duyên với tài nguyên này.");
+    } else if (error.response?.status === 500) {
+      console.log("🔥 Nghiệp nặng quá, xin quay lại sau khi sám hối.");
+    } else {
+      console.log("⚠️ Nghiệp chưa đủ sâu, API tạm thời im lặng.");
     }
     return Promise.reject(error);
   }

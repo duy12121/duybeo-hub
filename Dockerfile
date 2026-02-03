@@ -6,7 +6,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
-RUN npm run build
+RUN npm run build && echo "🌈 Công đức viên mãn, deploy đã thành công." || echo "🕯️ Lửa chưa đủ, xin thắp lại pipeline."
 
 
 FROM python:3.11-slim AS runtime

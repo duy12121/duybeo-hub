@@ -1,0 +1,85 @@
+﻿Project structure (depth=6). Excludes: .git, .vs, node_modules, dist, build, .venv, venv, __pycache__
+
+.cursor/
+  debug.log
+.windsurf/
+  workflows/
+    health.md
+{backend,frontend,bot}/
+backend/
+  bot/
+    setting.json
+  scripts/
+    check_email.py
+  .env
+  .env.example
+  ai_handler.py
+  auth.py
+  bot_integrated.py
+  bot_runner.py
+  config.py
+  database.py
+  gemini_client.py
+  main.py
+  models.py
+  requirements.txt
+  websocket_manager.py
+bot/
+frontend/
+  src/
+    components/
+      AdminChatPanel.jsx
+      AiChatPopup.jsx
+      ChatWithAdmin.jsx
+      Layout.jsx
+      NotificationToast.jsx
+      UserProfileModal.jsx
+    hooks/
+      useNotifications.js
+    locales/
+      vi.json
+    pages/
+      AdminPanel.jsx
+      Console.jsx
+      Dashboard.jsx
+      Login.jsx
+      Register.jsx
+    services/
+      api.js
+      websocket.js
+    App.jsx
+    index.css
+    main.jsx
+  .env.example
+  index.html
+  package.json
+  package-lock.json
+  postcss.config.js
+  tailwind.config.js
+  vite.config.js
+.dockerignore
+.gitattributes
+.gitignore
+BOT_INTEGRATION.md
+build-frontend.sh
+COMPLETE_REAL_TIME_STATS_GUIDE.md
+DEPLOYMENT.md
+DEPLOYMENT_RENDER.md
+DEPLOYMENT_SECURITY_CHECKLIST.md
+Dockerfile
+GEMINI_API_ROTATION.md
+git
+IMPLEMENTATION_CHECKLIST.md
+package-lock.json
+Procfile
+QUICKSTART.md
+railway.json
+RAILWAY_DEPLOYMENT.md
+README.md
+REAL_TIME_STATS.md
+REGISTRATION_FEATURE.md
+render.yaml
+render-build.sh
+runtime.txt
+STRUCTURE.txt
+test_mongo.py

@@ -21,7 +21,7 @@ class WebSocketService {
       this.ws = new WebSocket(`${WS_URL}/ws/${userId}`);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('🔔 Hữu duyên tương ngộ, WebSocket đã kết nối.');
         this.emit('connect');
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -53,12 +53,12 @@ class WebSocketService {
       };
 
       this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        console.log('🌑 Nhân duyên đã tận, WebSocket rời xa...');
         this.emit('disconnect');
         
         // Attempt to reconnect
         this.reconnectTimer = setTimeout(() => {
-          console.log('Attempting to reconnect...');
+          console.log('🧘‍♂️ Tĩnh tâm chờ đợi, duyên sẽ lại về.');
           this.connect(userId);
         }, this.reconnectInterval);
       };
