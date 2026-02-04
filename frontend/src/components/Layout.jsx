@@ -9,9 +9,10 @@ import NotificationToast from './NotificationToast';
 
 export default function Layout() {
   const [user, setUser] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userPanelOpen, setUserPanelOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const panelRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -23,6 +24,19 @@ export default function Layout() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(true);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   useEffect(() => {
@@ -60,9 +74,22 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-dark-950 flex">
+      {/* Mobile Overlay */}
+      {isMobile && sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
       {/* Sidebar */}
       <aside className={`
-        ${sidebarOpen ? 'w-64' : 'w-20'} 
+        ${isMobile 
+          ? `fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            }`
+          : `${sidebarOpen ? 'w-64' : 'w-20'}`
+        } 
         bg-dark-900 border-r border-dark-800 
         transition-all duration-300 
         flex flex-col
@@ -71,12 +98,14 @@ export default function Layout() {
         {/* Logo */}
         <div className="p-6 border-b border-dark-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Bot className="w-6 h-6 text-white" />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="DuyBeo hub (web bot ver)" 
+              className="w-10 h-10 rounded-lg object-cover"
+            />
             {sidebarOpen && (
               <div className="overflow-hidden">
-                <h1 className="font-display font-bold text-white text-lg">Bot Manager</h1>
+                <h1 className="text-xl font-bold text-white">DuyBeo hub (web bot ver)</h1>
                 <p className="text-xs text-dark-400">Zalo Bot</p>
               </div>
             )}
@@ -191,17 +220,33 @@ export default function Layout() {
         </div>
 
         {/* Toggle Button */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute -right-3 top-20 w-6 h-6 bg-dark-800 border border-dark-700 rounded-full flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-        >
-          {sidebarOpen ? <X className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
-        </button>
+        {!isMobile && (
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="absolute -right-3 top-20 w-6 h-6 bg-dark-800 border border-dark-700 rounded-full flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+          >
+            {sidebarOpen ? <X className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
+          </button>
+        )}
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
+      <main className={`flex-1 overflow-auto ${isMobile ? 'ml-0' : ''}`}>
+        {/* Mobile Header */}
+        {isMobile && (
+          <div className="bg-dark-900 border-b border-dark-800 p-4 flex items-center justify-between lg:hidden">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-800 rounded-lg transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-lg font-semibold text-white">DuyBeo hub (web bot ver)</h1>
+            <div className="w-9" />
+          </div>
+        )}
+        
+        <div className={`${isMobile ? 'p-4' : 'p-8'}`}>
           <Outlet />
         </div>
       </main>

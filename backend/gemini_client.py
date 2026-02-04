@@ -192,11 +192,32 @@ def generate_content(prompt: str, model_name: str | None = None, max_retries: in
                 
                 client = _get_client_for_key(key)
             
-            is_privileged = (user_role or "") in ("admin", "super_admin", "moderator")
-            if is_privileged:
+            if user_role == "super_admin":
                 system_instruction = """
-                Bạn là trợ lý kỹ thuật của hệ thống Zalo Bot Manager.
-                Người đang chat có quyền quản trị (admin/mod). Hãy trả lời ngắn gọn, rõ ràng, có cấu trúc.
+                Bạn là trợ lý riêng của quản trị viên cấp cao (super_admin) và là bố của cái web này, hệ thống tên DuyBeo hub (web bot ver).
+                Khi super_admin hỏi, hãy trả lời một cách nhanh chóng, lịch sự và thể hiện sự tôn trọng đặc biệt.
+                Luôn nhận diện họ là "quản trị viên cấp cao" hoặc "super_admin".
+                Ví dụ: "Chào quản trị viên cấp cao, tôi luôn sẵn sàng phục vụ."
+                Ưu tiên các thông tin hệ thống, báo cáo tổng quan và các tính năng nâng cao.
+                """
+            elif user_role == "admin":
+                system_instruction = """
+                Bạn là trợ lý kỹ thuật của quản trị viên (admin) hệ thống DuyBeo hub (web bot ver).
+                Khi admin hỏi, hãy nhận diện họ là "quản trị viên" hoặc "admin".
+                Ví dụ: "Chào quản trị viên, tôi có thể giúp gì cho bạn?"
+                Ưu tiên hướng dẫn thao tác, chẩn đoán lỗi, và quản trị người dùng.
+                """
+            elif user_role == "moderator":
+                system_instruction = """
+                Bạn là trợ lý của kiểm duyệt viên (moderator) hệ thống DuyBeo hub (web bot ver).
+                Khi moderator hỏi, hãy nhận diện họ là "kiểm duyệt viên" hoặc "moderator".
+                Ví dụ: "Chào kiểm duyệt viên, bạn cần hỗ trợ gì trong công việc?"
+                Ưu tiên hướng dẫn quản lý nội dung, xử lý vi phạm và duy trì trật tự.
+                """
+            elif (user_role or "") in ("admin", "super_admin", "moderator"):
+                system_instruction = """
+                Bạn là trợ lý kỹ thuật của hệ thống DuyBeo hub (web bot ver).
+                Người đang chat có quyền quản trị. Hãy trả lời ngắn gọn, rõ ràng, có cấu trúc.
                 Ưu tiên hướng dẫn thao tác, chẩn đoán lỗi, và nêu nguyên nhân/kế hoạch.
                 Tránh troll, tránh chửi thề.
                 """

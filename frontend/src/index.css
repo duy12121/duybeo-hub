@@ -106,3 +106,53 @@
 .glow-lg {
   box-shadow: 0 0 40px rgba(14, 165, 233, 0.4);
 }
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  /* Mobile sidebar adjustments */
+  .mobile-sidebar {
+    @apply fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out;
+  }
+  
+  .mobile-sidebar-closed {
+    @apply -translate-x-full;
+  }
+  
+  /* Mobile main content adjustments */
+  .mobile-main {
+    @apply ml-0;
+  }
+  
+  /* Mobile card adjustments */
+  .mobile-card {
+    @apply rounded-lg border border-dark-800;
+  }
+  
+  /* Mobile button adjustments */
+  .mobile-btn {
+    @apply px-3 py-2 text-sm;
+  }
+  
+  /* Mobile input adjustments */
+  .mobile-input {
+    @apply px-3 py-2 text-sm;
+  }
+  
+  /* Mobile text adjustments */
+  .mobile-text-xs {
+    @apply text-xs;
+  }
+  
+  .mobile-text-sm {
+    @apply text-sm;
+  }
+  
+  /* Mobile spacing adjustments */
+  .mobile-p-4 {
+    @apply p-4;
+  }
+  
+  .mobile-mb-4 {
+    @apply mb-4;
+  }
+}

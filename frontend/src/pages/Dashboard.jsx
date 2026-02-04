@@ -19,22 +19,22 @@ const StatCard = memo(({ icon, label, value, color, tooltip }) => {
 
   return (
     <div 
-      className="card p-6 relative"
+      className="card p-4 sm:p-6 relative"
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className={`p-3 rounded-xl bg-gradient-to-br ${colors[color]} text-white shadow-lg`}>
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className={`p-2 sm:p-3 rounded-xl bg-gradient-to-br ${colors[color]} text-white shadow-lg`}>
           {icon}
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-white">{value}</div>
+          <div className="text-lg sm:text-2xl font-bold text-white">{value}</div>
         </div>
       </div>
-      <div className="text-sm text-dark-400 font-medium">{label}</div>
+      <div className="text-xs sm:text-sm text-dark-400 font-medium">{label}</div>
       
       {showTooltip && tooltip && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 bg-dark-900 border border-dark-600 rounded-lg shadow-xl z-10 w-64">
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 bg-dark-900 border border-dark-600 rounded-lg shadow-xl z-10 w-48 sm:w-64">
           {tooltip}
         </div>
       )}
@@ -366,7 +366,7 @@ const Dashboard = memo(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         <StatCard
           icon={<Activity className="w-6 h-6" />}
           label="Bot Uptime"
@@ -424,7 +424,7 @@ const Dashboard = memo(() => {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
         {/* Activity Chart */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Activity Over Time</h3>

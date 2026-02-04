@@ -41,10 +41,10 @@ export default function Login() {
             <Bot className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl font-display font-bold text-white mb-2">
-            Zalo Bot Manager
+            DuyBeo hub (web bot ver)
           </h1>
           <p className="text-dark-400 text-sm">
-            Quản trị bot Zalo của bạn
+            ngắm xem duybeo đang làm trò hề gì
           </p>
         </div>
 

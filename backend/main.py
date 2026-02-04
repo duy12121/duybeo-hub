@@ -138,6 +138,7 @@ FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
 ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS") == "1"
 
 @app.get("/health")
+@app.head("/health")
 async def health_check_root():
     """Health check endpoint for deployment monitoring (root path)"""
     return {
@@ -147,6 +148,7 @@ async def health_check_root():
     }
 
 @app.get("/api/health")
+@app.head("/api/health")
 async def health_check():
     """Health check endpoint for deployment monitoring"""
     return {

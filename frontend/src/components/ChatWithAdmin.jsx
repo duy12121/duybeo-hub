@@ -19,6 +19,10 @@ const ChatWithAdmin = memo(({ currentUser, isOpen, onClose }) => {
       `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
     const ws = new WebSocket(`${wsBase}/ws/chat`);
 
+    ws.onopen = () => {
+      console.log('🔔 Hữu duyên tương ngộ, WebSocket chat đã kết nối.');
+    };
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -33,6 +37,15 @@ const ChatWithAdmin = memo(({ currentUser, isOpen, onClose }) => {
 
     ws.onerror = (e) => {
       console.error('Chat WebSocket error:', e);
+      console.log('⚠️ Nghiệp chưa đủ sâu, WebSocket chat tạm thời im lặng.');
+    };
+
+    ws.onclose = () => {
+      console.log('🌑 Nhân duyên đã tận, WebSocket chat rời xa...');
+      // Attempt to reconnect after 3 seconds
+      setTimeout(() => {
+        console.log('🧘‍♂️ Tĩnh tâm chờ đợi, duyên chat sẽ lại về.');
+      }, 3000);
     };
 
     return () => {

@@ -121,9 +121,17 @@ class AIHandler:
         if "hello" in message_lower:
             return "Hello! How can I help you today?"
         elif "how are you" in message_lower:
-            return "I'm doing well, thank you for asking!"
+            return "Tôi đang hoạt động tốt, cảm ơn bạn đã hỏi!"
         else:
-            return "I understand your message. Let me help you with that."
+            # Generate more contextual responses
+            if "help" in message_lower or "hỗ trợ" in message_lower:
+                return "Tôi có thể giúp bạn tìm thông tin hoặc trả lời câu hỏi. Bạn cần hỗ trợ gì?"
+            elif "hello" in message_lower or "chào" in message_lower:
+                return "Xin chào! Tôi là trợ lý AI, rất vui được hỗ trợ bạn."
+            elif "thanks" in message_lower or "cảm ơn" in message_lower:
+                return "Rất vui vì đã giúp được bạn! Cần hỗ trợ thêm gì không?"
+            else:
+                return "Tôi hiểu tin nhắn của bạn. Hãy để tôi giúp đỡ nhé."
 
     async def _send_partial_response(self, thread_id: str, message: str):
         """Send partial response to Zalo before timeout"""

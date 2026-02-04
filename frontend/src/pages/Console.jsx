@@ -181,20 +181,20 @@ export default function Console() {
   };
 
   return (
-    <div className="animate-fade-in flex flex-col h-[calc(100vh-6rem)]">
+    <div className="animate-fade-in flex flex-col h-[calc(100vh-6rem)] sm:h-[calc(100vh-6rem)]">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded flex items-center justify-center">
-            <Terminal className="w-4 h-4 text-white" />
+          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded flex items-center justify-center">
+            <Terminal className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
           </div>
-          <h1 className="text-xl font-display font-bold text-white">Console</h1>
+          <h1 className="text-lg sm:text-xl font-display font-bold text-white">Console</h1>
         </div>
         
         {/* Logging Toggle */}
         <button
           onClick={handleLoggingToggle}
-          className={`px-3 py-2 rounded-lg border transition-colors ${
+          className={`px-2 py-1 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
             loggingEnabled
               ? 'bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20'
               : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
@@ -219,7 +219,7 @@ export default function Console() {
                 : 'text-dark-400 hover:text-white'
             }`}
           >
-            📋 Nhật Ký ({logs.length})
+            📋 logs ({logs.length})
           </button>
           <button
             onClick={() => setActiveTab('commands')}
@@ -241,7 +241,7 @@ export default function Console() {
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="input py-1 px-2 text-xs h-7"
+                className="input py-1 px-2 text-xs h-7 w-auto"
               >
                 <option value="ALL">Tất Cả</option>
                 <option value="INFO">INFO</option>
