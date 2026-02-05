@@ -588,6 +588,16 @@ async def get_bot_status(
     try:
         runner_status = bot_runner.get_bot_status()
         actual_running = bool(runner_status.get("running"))
+        
+        # Calculate actual uptime from bot start time
+        uptime = 0
+        if actual_running and runner_status.get("start_time"):
+            from datetime import timedelta
+            gmt7 = timezone(timedelta(hours=7))
+            uptime = int((datetime.now(gmt7) - datetime.fromisoformat(runner_status["start_time"])).total_seconds())
+        
+        # Update bot_state with actual uptime
+        bot_state["uptime"] = uptime
     except Exception:
         actual_running = False
 
@@ -599,7 +609,13 @@ async def get_bot_status(
             bot_state["uptime"] = 0
         await manager.broadcast_bot_status(bot_state)
 
-    return BotStatus(**bot_state)
+    return BotStatus(
+        is_running=actual_running,
+        uptime=bot_state.get("uptime", 0),  # Use actual bot uptime
+        last_activity=bot_state.get("last_activity"),
+        total_messages_sent=bot_state.get("total_messages_sent", 0),
+        total_messages_received=bot_state.get("total_messages_received", 0)
+    )
 
 @app.post("/api/bot/start")
 async def start_bot(
@@ -963,10 +979,27 @@ async def get_dashboard_stats(
 
     # Calculate uptime if bot is running
     uptime_seconds = 0
-    if bot_state["is_running"] and bot_state.get("start_time"):
-        from datetime import timedelta
-        gmt7 = timezone(timedelta(hours=7))
-        uptime_seconds = int((datetime.now(gmt7) - datetime.fromisoformat(bot_state["start_time"])).total_seconds())
+    if bot_state["is_running"]:
+        # Try to get actual bot start time from bot_runner
+        try:
+            runner_status = bot_runner.get_bot_status()
+            bot_start_time = runner_status.get("start_time")
+            if bot_start_time:
+                from datetime import timedelta
+                gmt7 = timezone(timedelta(hours=7))
+                uptime_seconds = int((datetime.now(gmt7) - datetime.fromisoformat(bot_start_time)).total_seconds())
+            else:
+                # Fallback to web start time
+                if bot_state.get("start_time"):
+                    from datetime import timedelta
+                    gmt7 = timezone(timedelta(hours=7))
+                    uptime_seconds = int((datetime.now(gmt7) - datetime.fromisoformat(bot_state["start_time"])).total_seconds())
+        except Exception:
+            # Fallback to web start time
+            if bot_state.get("start_time"):
+                from datetime import timedelta
+                gmt7 = timezone(timedelta(hours=7))
+                uptime_seconds = int((datetime.now(gmt7) - datetime.fromisoformat(bot_state["start_time"])).total_seconds())
 
     recent_logs = []
     async for log in db.logs.find().sort("timestamp", -1).limit(5):

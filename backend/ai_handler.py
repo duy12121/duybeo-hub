@@ -5,6 +5,21 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from database import get_database
 
+# Import Gemini client
+try:
+    from gemini_client import generate_content as generate_ai_content
+    print(f"[AI_DEBUG] Gemini client imported successfully: {generate_ai_content is not None}")
+    
+    # Test environment variables
+    import os
+    gemini_keys = os.environ.get("GEMINI_KEYS", "")
+    print(f"[AI_DEBUG] GEMINI_KEYS set: {bool(gemini_keys)}")
+    print(f"[AI_DEBUG] GEMINI_KEYS length: {len(gemini_keys)}")
+    
+except Exception as e:
+    print(f"[AI_DEBUG] Failed to import Gemini client: {e}")
+    generate_ai_content = None
+
 class AIHandler:
     def __init__(self):
         self.fallback_responses = [
@@ -112,24 +127,62 @@ class AIHandler:
 
     async def _call_ai_service(self, message: str, thread_id: str = None, is_web: bool = False) -> str:
         """Call actual AI service (Gemini, etc.)"""
-        # This is where you would integrate with your actual AI service
-        # For now, return a placeholder
-        await asyncio.sleep(0.3)  # Reduced from 0.5s to save memory
-        
-        # Simple response generation (replace with actual AI call)
-        message_lower = message.lower()
-        if "hello" in message_lower:
-            return "Hello! How can I help you today?"
-        elif "how are you" in message_lower:
-            return "Tôi đang hoạt động tốt, cảm ơn bạn đã hỏi!"
-        else:
-            # Generate more contextual responses
+        try:
+            # Import Gemini client
+            from gemini_client import generate_content as generate_ai_content
+            print(f"[AI_DEBUG] Gemini client imported successfully: {generate_ai_content is not None}")
+            
+            if generate_ai_content is None:
+                print("[AI_DEBUG] Gemini client is None, using fallback")
+                # Fallback to simple responses if Gemini not available
+                await asyncio.sleep(0.3)
+                message_lower = message.lower()
+                if "hello" in message_lower:
+                    return "Hello! How can I help you today?"
+                elif "how are you" in message_lower:
+                    return "Tôi đang hoạt động tốt, cảm ơn bạn đã hỏi!"
+                else:
+                    if "help" in message_lower or "hỗ trợ" in message_lower:
+                        return "Tôi có thể giúp bạn tìm thông tin hoặc trả lời câu hỏi. Bạn cần hỗ trợ gì?"
+                    elif "hello" in message_lower or "chào" in message_lower:
+                        return "Xin chào! Tôi là trợ lý AI, rất vui được hỗ trợ bạn."
+                    elif "thanks" in message_lower or "cảm ơn" in message_lower:
+                        return "Rất vui vì đã giúp được bạn! Cần hỗ trợ thêm gì không?"
+                    else:
+                        return "Tôi hiểu tin nhắn của bạn. Hãy để tôi giúp đỡ nhé."
+            
+            # Get user role for role-based responses
+            user_role = None
+            if thread_id and hasattr(self, '_get_user_role'):
+                try:
+                    user_role = await self._get_user_role(thread_id)
+                except:
+                    pass  # Ignore if we can't get user role
+            
+            # Call Gemini AI with role awareness
+            print(f"[AI_DEBUG] Calling Gemini with message: {message[:100]}...")
+            response = generate_ai_content(
+                prompt=message,
+                model_name=None,
+                max_retries=3,
+                user_role=user_role
+            )
+            print(f"[AI_DEBUG] Gemini response: {response[:100] if response else 'None'}...")
+            
+            return response or "Tôi hiểu tin nhắn của bạn. Hãy để tôi giúp đỡ nhé."
+            
+        except Exception as e:
+            print(f"[AI_ERROR] Gemini call failed: {e}")
+            print(f"[AI_DEBUG] Exception type: {type(e).__name__}")
+            import traceback
+            print(f"[AI_DEBUG] Traceback: {traceback.format_exc()}")
+            # Fallback to simple responses on error
+            await asyncio.sleep(0.3)
+            message_lower = message.lower()
             if "help" in message_lower or "hỗ trợ" in message_lower:
                 return "Tôi có thể giúp bạn tìm thông tin hoặc trả lời câu hỏi. Bạn cần hỗ trợ gì?"
             elif "hello" in message_lower or "chào" in message_lower:
                 return "Xin chào! Tôi là trợ lý AI, rất vui được hỗ trợ bạn."
-            elif "thanks" in message_lower or "cảm ơn" in message_lower:
-                return "Rất vui vì đã giúp được bạn! Cần hỗ trợ thêm gì không?"
             else:
                 return "Tôi hiểu tin nhắn của bạn. Hãy để tôi giúp đỡ nhé."
 

@@ -1,12 +1,12 @@
 #  ========================================
 # mong ngài phù hộ cho bot chạy bình thường
 #  ========================================
-#⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⢀⠤⠒⠒⠢⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-#⠀⠀⠀⠀⠀⠀⠀⠀  ⢀⡯⠴⠶⠶⠒⠢⢇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-#⠀⠀⠀⠀⠀⠀⠀⠀  ⡎⡤⠖⠂⡀⠒⡢⡌⢣⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-#⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣷⠯⢭⣵⠑⣯⡭⢹⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-#⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡆⠀⢠⣤⠄⠀⣸⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-#⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⣷⢄⣈⣟⢁⢴⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⠀ ⢀⠤⠒⠒⠢⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀⠀ ⠀⠀⠀⠀⠀⠀  ⢀⡯⠴⠶⠶⠒⠢⢇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀ ⠀⠀⠀⠀⠀⠀⠀  ⡎⡤⠖⠂⡀⠒⡢⡌⢣⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⣷⠯⢭⣵⠑⣯⡭⢹⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⢻⡆⠀⢠⣤⠄⠀⣸⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+#⠀⠀⠀⠀⠀ ⠀⠀⠀⠀⠀⠸⣷⢄⣈⣟⢁⢴⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 #⠀⠀⠀⠀⠀⠀⠀⣀⢴⠒⡝⠁⠬⠛⣚⡩⠔⠉⢻⠒⣦⢄⠀⠀⠀⠀⠀⠀⠀⠀
 #⠀⠀⠀⠀⠀⢀⢎⠁⡌⢰⠁⠀⠀⠀⠀⠀⠀⠀⢸⠀⡛⠀⡷⡀⠀⠀⠀⠀⠀⠀
 #⠀⠀⠀⠀⣀⣾⣷⣠⠃⢸⠀⠀⠀⠀⠀⠀⠀⠀⣸⠀⢹⢰⠁⢳⠀⠀⠀⠀⠀⠀
@@ -286,10 +286,11 @@ class ZaloBotRunner:
         self.session_cookies = session_cookies
         self.bot = None
         self.running = False
+        self.start_time = None  # Track when bot actually starts
         self.bot_thread: Optional[Thread] = None
         self.running_event = Event()
-        self.bot_thread: Optional[Thread] = None # New: to hold the bot listening thread
-        self.running_event = Event() # New: to signal the bot to stop
+        self.bot_thread: Optional[Thread] = None # New: to hold bot listening thread
+        self.running_event = Event() # New: to signal bot to stop
         
         logger.info("Initializing Zalo Bot Runner")
     
@@ -332,11 +333,14 @@ class ZaloBotRunner:
             
                 
                 self.running = True
+                from datetime import datetime, timezone, timedelta
+                gmt7 = timezone(timedelta(hours=7))
+                self.start_time = datetime.now(gmt7).isoformat()  # Track actual bot start time
                 bot_name = getattr(self.bot, 'me_name', 'Unknown Bot')
                 logger.info(f"Bot started successfully: {bot_name}")
                 # #region agent log
                 with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:289", "message": "Bot instance created and attempting to listen", "data": {"bot_name": bot_name}, "timestamp": int(time.time() * 1000)}) + "\n")
+                    f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "C", "location": "bot_runner.py:289", "message": "Bot instance created and attempting to listen", "data": {"bot_name": bot_name, "start_time": self.start_time}, "timestamp": int(time.time() * 1000)}) + "\n")
                 # #endregion
                 self.running_event.set() # Signal that the bot should be running
                 self.bot_thread = Thread(target=self._run_bot_with_error_handling, daemon=True)
@@ -383,6 +387,9 @@ class ZaloBotRunner:
     def _run_mock_bot(self):
         """Run mock bot for testing without zlapi"""
         self.running = True
+        from datetime import datetime, timezone, timedelta
+        gmt7 = timezone(timedelta(hours=7))
+        self.start_time = datetime.now(gmt7).isoformat()  # Set start time for mock bot
         logger.info("Mock bot started (zlapi not installed)")
 
         def mock_activity():
@@ -412,6 +419,7 @@ class ZaloBotRunner:
             else:
                 logger.info("Bot thread terminated.")
         self.running = False
+        self.start_time = None  # Clear start time when stopped
         logger.info("Bot stopped")
         # #region agent log
         with open(r"c:\Users\duy\Desktop\zalo-bot-integrated\.cursor\debug.log", "a", encoding="utf-8") as f:
@@ -516,5 +524,6 @@ def get_bot_status():
     return {
         "running": bot_runner.running,
         "initialized": True,
-        "mode": "real" if ZLAPI_AVAILABLE else "mock"
+        "mode": "real" if ZLAPI_AVAILABLE else "mock",
+        "start_time": bot_runner.start_time  # Return actual bot start time
     }

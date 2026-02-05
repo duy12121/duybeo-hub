@@ -50,12 +50,15 @@ except Exception:
 
 try:
     from ai_handler import ai_handler
-except Exception:
+    print(f"[BOT_DEBUG] AI handler imported successfully: {type(ai_handler)}")
+except Exception as e:
+    print(f"[BOT_DEBUG] Failed to import AI handler: {e}")
     # Fallback AI handler
     class DummyAIHandler:
         async def get_ai_response(self, message, thread_id=None, is_web=False):
             return "Xin lỗi, AI không khả dụng ngay bây giờ."
     ai_handler = DummyAIHandler()
+    print(f"[BOT_DEBUG] Using dummy AI handler: {type(ai_handler)}")
 
 author  = (
     "👨‍💻 Tác giả: A Sìn\n"
@@ -871,6 +874,7 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
                         else:
                             try:
                                 # Use AI handler with timeout and fallback
+                                print(f"[BOT_DEBUG] Calling AI handler with question: {question}")
                                 import asyncio
                                 loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(loop)
@@ -878,8 +882,12 @@ def handle_bot_command(bot, message_object, author_id, thread_id, thread_type, c
                                     ai_handler.get_ai_response(question, thread_id, is_web=False)
                                 )
                                 loop.close()
+                                print(f"[BOT_DEBUG] AI handler response: {resp_text}")
                                 response = resp_text if resp_text else "➜ 🤖 AI không trả về nội dung."
                             except Exception as e:
+                                print(f"[BOT_DEBUG] AI handler error: {e}")
+                                import traceback
+                                print(f"[BOT_DEBUG] Traceback: {traceback.format_exc()}")
                                 response = f"➜ 🤖 Lỗi AI: {e}"
                 elif action == 'admin':
                     if len(parts) < 3:
